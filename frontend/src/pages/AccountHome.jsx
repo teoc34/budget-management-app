@@ -3,6 +3,8 @@ import {
     PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
     LineChart, Line, XAxis, YAxis
 } from 'recharts';
+import { format } from 'date-fns';
+
 
 const EXCLUDED_CATEGORIES = ['Rent', 'Transport', 'Utilities'];
 
@@ -11,6 +13,8 @@ const AccountHome = ({ user }) => {
     const [greedySuggestions, setGreedySuggestions] = useState([]);
     const [goalPaths, setGoalPaths] = useState([]);
     const [savingsTarget, setSavingsTarget] = useState(30);
+    const [selectedMonth, setSelectedMonth] = useState('');
+
 
     useEffect(() => {
         if (!user) return;
@@ -91,8 +95,14 @@ const AccountHome = ({ user }) => {
 
         setGoalPaths(best || []);
     };
+    const filteredTransactions = selectedMonth
+        ? transactions.filter(tx => {
+            const month = new Date(tx.transaction_date).getMonth() + 1;
+            return month === Number(selectedMonth);
+        })
+        : transactions;
 
-    const chartData = transactions.reduce((acc, tx) => {
+    const chartData = filteredTransactions.reduce((acc, tx) => {
         const found = acc.find(item => item.name === tx.category);
         if (found) {
             found.value += Number(tx.amount);
@@ -103,7 +113,7 @@ const AccountHome = ({ user }) => {
     }, []);
 
     const dailySpendingData = transactions.reduce((acc, tx) => {
-        const date = tx.transaction_date;
+        const date = format(new Date(tx.transaction_date), 'dd MMM yyyy');
         const existing = acc.find(item => item.date === date);
         if (existing) {
             existing.amount += Number(tx.amount);
@@ -122,6 +132,39 @@ const AccountHome = ({ user }) => {
             {/* Pie Chart */}
             <div className="bg-white p-6 rounded-xl shadow-md mb-10">
                 <h3 className="text-xl font-semibold mb-4">Spending Breakdown</h3>
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <label className="mr-2 font-medium text-gray-700">Filter by month:</label>
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="p-2 border rounded"
+                        >
+                            <option value="">All</option>
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+
+                    {selectedMonth && (
+                        <button
+                            onClick={() => setSelectedMonth('')}
+                            className="ml-4 px-3 py-1 bg-gray-200 hover:bg-gray-300 text-sm rounded"
+                        >
+                            Reset Filter
+                        </button>
+                    )}
+                </div>
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100}>
@@ -193,7 +236,7 @@ const AccountHome = ({ user }) => {
                     <ul className="list-disc pl-6 text-gray-800">
                         {goalPaths.map((tx, idx) => (
                             <li key={idx}>
-                                Save <strong>{tx.amount} RON</strong> from <strong>{tx.category}</strong> on {tx.transaction_date}
+                                Save <strong>{tx.amount} RON</strong> from <strong>{tx.category}</strong> on {format(new Date(tx.transaction_date), 'dd MMMM yyyy')}
                             </li>
                         ))}
                     </ul>

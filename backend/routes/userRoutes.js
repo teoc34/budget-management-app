@@ -38,7 +38,28 @@ router.get('/users/:id', async (req, res) => {
         }
         res.json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error fetching user:', err.message);
+        res.status(500).json({ error: 'Failed to fetch user' });
+    }
+});
+
+// Update user
+router.put('/users/:id', async (req, res) => {
+    const { id } = req.params;
+    const { phone, address, emergency_contact, business_id } = req.body;
+
+    try {
+        const result = await pool.query(
+            `UPDATE users SET phone = $1, address = $2, emergency_contact = $3, business_id = $4 WHERE user_id = $5 RETURNING *`,
+            [phone, address, emergency_contact, business_id, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating user:', err.message);
+        res.status(500).json({ error: 'Failed to update user' });
     }
 });
 

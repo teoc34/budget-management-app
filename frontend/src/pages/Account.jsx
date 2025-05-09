@@ -8,18 +8,20 @@ const Account = ({ user }) => {
         business_id: ''
     });
 
-    const [businesses, setBusinesses] = useState([]);
     const [businessName, setBusinessName] = useState('');
     const [message, setMessage] = useState('');
 
     useEffect(() => {
-        if (user?.business_id) {
+        if (user?.user_id) {
             fetchUserData();
-            fetchBusinessName(user.business_id);
-        } else if (user.role !== 'administrator') {
-            fetchBusinesses();
         }
     }, [user]);
+
+    useEffect(() => {
+        if (form.business_id) {
+            fetchBusinessName(form.business_id);
+        }
+    }, [form.business_id]);
 
     const fetchUserData = async () => {
         try {
@@ -36,23 +38,13 @@ const Account = ({ user }) => {
         }
     };
 
-    const fetchBusinessName = async (id) => {
+    const fetchBusinessName = async (businessId) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/businesses/${id}`);
+            const res = await fetch(`http://localhost:5000/api/businesses/${businessId}`);
             const data = await res.json();
-            setBusinessName(data.name);
-        } catch (err) {
-            console.error('Error fetching business name:', err);
-        }
-    };
-
-    const fetchBusinesses = async () => {
-        try {
-            const res = await fetch('http://localhost:5000/api/businesses');
-            const data = await res.json();
-            setBusinesses(data);
-        } catch (err) {
-            console.error('Error fetching businesses:', err);
+            if (data?.name) setBusinessName(data.name);
+        } catch (error) {
+            console.error("Error fetching business name:", error);
         }
     };
 
@@ -114,33 +106,20 @@ const Account = ({ user }) => {
                 </div>
                 <div>
                     <label className="block font-semibold">Business</label>
-                    {user.role === 'administrator' || user.business_id ? (
-                        <input
-                            type="text"
-                            value={businessName || '—'}
-                            className="w-full p-2 border rounded bg-gray-100"
-                            disabled
-                        />
-                    ) : (
-                        <div>
-                            <label className="block font-semibold">Your Business</label>
-                            <input
-                                type="text"
-                                value={businessName || "Loading..."}
-                                disabled
-                                className="w-full p-2 border rounded bg-gray-100"
-                            />
-                        </div>
-                    )
-                    }
-                </div >
+                    <input
+                        type="text"
+                        value={businessName || '—'}
+                        className="w-full p-2 border rounded bg-gray-100"
+                        disabled
+                    />
+                </div>
 
                 <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
                     Save Changes
                 </button>
                 {message && <p className="text-green-600 mt-2">{message}</p>}
-            </form >
-        </div >
+            </form>
+        </div>
     );
 };
 

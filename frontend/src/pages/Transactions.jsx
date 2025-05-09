@@ -144,8 +144,8 @@ const Transactions = () => {
                                     <p className="text-sm text-gray-600">{tx.note || 'No note'}</p>
                                 </div>
                                 <div className="text-right">
-                                    <p className="font-bold text-indigo-600">${tx.amount}</p>
-                                    <p className="text-xs text-gray-500">{tx.transaction_date}</p>
+                                    <p className="font-bold text-indigo-600">{parseFloat(tx.amount).toFixed(2)} RON</p>
+                                    <p className="text-xs text-gray-500">{format(new Date(tx.transaction_date), 'dd MMM yyyy')}</p>
                                 </div>
                             </div>
                         </div>
@@ -185,7 +185,7 @@ const Transactions = () => {
                                 transaction_date: date.toISOString().split('T')[0],
                             })}
                             className="w-full mb-2 p-2 border rounded"
-                            dateFormat="yyyy-MM-dd"
+                            dateFormat="dd MMM yyyy"
                         />
                         <textarea
                             placeholder="Note (optional)"
