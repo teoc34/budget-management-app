@@ -10,26 +10,23 @@ const pool = new Pool({
 
 // Signup Route
 router.post('/signup', async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
-            'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING user_id, name, email',
-            [name, email, hashedPassword]
+            'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
+            [name, email, hashedPassword, role || 'user']
         );
 
-        res.status(201).json({
-            message: 'User created successfully',
-            user: result.rows[0]
-        });
-
+        res.status(201).json({ message: 'User created successfully', user: result.rows[0] });
     } catch (err) {
         console.error('Error during signup:', err);
         res.status(500).json({ error: 'Signup failed' });
     }
 });
+
 
 // Signin Route
 router.post('/signin', async (req, res) => {
@@ -50,7 +47,17 @@ router.post('/signin', async (req, res) => {
             return res.status(400).json({ error: 'Incorrect password' });
         }
 
-        res.status(200).json({ message: 'Login successful', user: { user_id: user.user_id, name: user.name, email: user.email } });
+        res.status(200).json({
+            message: 'Login successful',
+            user: {
+                user_id: user.user_id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                business_id: user.business_id
+            }
+        });
+
     } catch (err) {
         console.error('Error during signin:', err);
         res.status(500).json({ error: 'Signin failed' });

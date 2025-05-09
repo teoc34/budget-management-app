@@ -5,28 +5,43 @@ const pool = require('../config/database');
 
 // GET all transactions
 router.get('/', async (req, res) => {
+    const { user_id } = req.query;
     try {
-        const result = await pool.query('SELECT * FROM transactions ORDER BY transaction_date DESC');
+        const result = await pool.query(
+            'SELECT * FROM transactions WHERE user_id = $1 ORDER BY transaction_date DESC',
+            [user_id]
+        );
         res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching transactions:', error);
-        res.status(500).json({ error: 'Failed to fetch transactions' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-// POST new transaction
 router.post('/', async (req, res) => {
     const { user_id, amount, category, note, transaction_date } = req.body;
+
     try {
-        const result = await pool.query(
-            'INSERT INTO transactions (user_id, amount, category, note, transaction_date) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [user_id, amount, category, note, transaction_date]
+
+        const businessResult = await pool.query(
+            'SELECT business_id FROM users WHERE user_id = $1',
+            [user_id]
         );
+
+        const business_id = businessResult.rows[0]?.business_id;
+
+
+        const result = await pool.query(
+            'INSERT INTO transactions (user_id, amount, category, note, transaction_date, business_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [user_id, amount, category, note, transaction_date, business_id]
+        );
+
         res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error('Error adding transaction:', error);
-        res.status(500).json({ error: 'Failed to add transaction' });
+    } catch (err) {
+        console.error('Error inserting transaction:', err);
+        res.status(500).json({ error: err.message });
     }
 });
+
+
 
 module.exports = router;

@@ -14,12 +14,28 @@ const Transactions = () => {
         note: '',
         transaction_date: new Date().toISOString().split('T')[0],
     });
-    const [user] = useState(JSON.parse(localStorage.getItem('user')));
+    const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')));
+
     const [toastMessage, setToastMessage] = useState('');
 
     useEffect(() => {
         fetchTransactions();
     }, []);
+
+    useEffect(() => {
+        const loadTransactions = async () => {
+            if (!user) return;
+            try {
+                const res = await fetch(`http://localhost:5000/api/transactions?user_id=${user.user_id}`);
+                const data = await res.json();
+                setTransactions(data);
+            } catch (err) {
+                console.error('Failed to load transactions:', err);
+            }
+        };
+
+        loadTransactions();
+    }, [user]);
 
     const fetchTransactions = async () => {
         try {
@@ -45,6 +61,7 @@ const Transactions = () => {
         const entry = {
             ...newTransaction,
             user_id: user.user_id,
+            business_id: user.business_id,
         };
 
         try {
