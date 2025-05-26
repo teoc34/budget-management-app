@@ -104,15 +104,17 @@ const Account = ({ user }) => {
                         className="w-full p-2 border rounded"
                     />
                 </div>
-                <div>
-                    <label className="block font-semibold">Business</label>
-                    <input
-                        type="text"
-                        value={businessName || '—'}
-                        className="w-full p-2 border rounded bg-gray-100"
-                        disabled
-                    />
-                </div>
+                {user.role !== 'accountant' && (
+                    <div>
+                        <label className="block font-semibold">Business</label>
+                        <input
+                            type="text"
+                            value={businessName ? businessName : "—"}
+                            className="w-full p-2 border rounded bg-gray-100"
+                            disabled
+                        />
+                    </div>
+                )}
 
                 <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
                     Save Changes

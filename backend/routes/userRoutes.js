@@ -29,6 +29,7 @@ router.post('/users', async (req, res) => {
     }
 });
 
+// Get a specific user by ID
 router.get('/users/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -43,25 +44,37 @@ router.get('/users/:id', async (req, res) => {
     }
 });
 
-// Update user
+// Update user details
 router.put('/users/:id', async (req, res) => {
     const { id } = req.params;
-    const { phone, address, emergency_contact, business_id } = req.body;
+    let { phone, address, emergency_contact, business_id } = req.body;
 
     try {
+        // If business_id is an empty string, set it to null
+        if (business_id === '') {
+            business_id = null;
+        }
+
         const result = await pool.query(
-            `UPDATE users SET phone = $1, address = $2, emergency_contact = $3, business_id = $4 WHERE user_id = $5 RETURNING *`,
-            [phone, address, emergency_contact, business_id, id]
+            `UPDATE users
+             SET phone = $1,
+                 address = $2,
+                 emergency_contact = $3,
+                 business_id = $4
+             WHERE user_id = $5
+             RETURNING *`,
+            [phone || null, address || null, emergency_contact || null, business_id, id]
         );
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error updating user:', err.message);
         res.status(500).json({ error: 'Failed to update user' });
     }
 });
-
 
 module.exports = router;

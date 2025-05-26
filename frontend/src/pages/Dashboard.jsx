@@ -4,8 +4,13 @@ import AccountHome from './AccountHome';
 import Account from './Account';
 import Transactions from './Transactions';
 import AdminBusinesses from './AdminBusinesses';
+import AccountantBusinesses from './AccountantBusinesses';
+
 const Dashboard = () => {
     const [user, setUser] = useState(null);
+    const [selectedBusinessId, setSelectedBusinessId] = useState('');
+    const [selectedBusinessName, setSelectedBusinessName] = useState('');
+    const [accountantBusinesses, setAccountantBusinesses] = useState([]);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -18,6 +23,14 @@ const Dashboard = () => {
         }
     }, [navigate]);
 
+    useEffect(() => {
+        if (user?.role === 'accountant') {
+            fetch(`http://localhost:5000/api/accountants/${user.user_id}`)
+                .then(res => res.json())
+                .then(setAccountantBusinesses)
+                .catch(err => console.error('Failed to load accountant businesses:', err));
+        }
+    }, [user]);
 
     const handleLogout = () => {
         localStorage.removeItem('user');
@@ -34,6 +47,9 @@ const Dashboard = () => {
                     <Link to="/dashboard/accounthome" className="hover:underline">Dashboard</Link>
                     <Link to="/dashboard/account" className="hover:underline">Account Info</Link>
                     <Link to="/dashboard/transactions" className="hover:underline">Transactions</Link>
+                    {user?.role === 'accountant' && (
+                        <Link to="/dashboard/accountant/businesses" className="hover:underline">Add Business</Link>
+                    )}
                     {user.role === 'administrator' && (
                         <Link to="/dashboard/admin/businesses" className="hover:underline">Create Business</Link>
                     )}
@@ -44,9 +60,23 @@ const Dashboard = () => {
 
             <div className="p-6 flex-grow">
                 <Routes>
-                    <Route path="accounthome" element={<AccountHome user={user} />} />
+                    <Route
+                        path="accounthome"
+                        element={
+                            <AccountHome
+                                user={user}
+                                selectedBusinessId={selectedBusinessId}
+                                setSelectedBusinessId={setSelectedBusinessId}
+                                accountantBusinesses={accountantBusinesses}
+                            />
+                        }
+                    />
+
                     <Route path="account" element={<Account user={user} />} />
                     <Route path="transactions" element={<Transactions user={user} />} />
+                    {user?.role === 'accountant' && (
+                        <Route path="accountant/businesses" element={<AccountantBusinesses user={user} />} />
+                    )}
                     {user.role === 'administrator' && (
                         <Route path="admin/businesses" element={<AdminBusinesses user={user} />} />
                     )}

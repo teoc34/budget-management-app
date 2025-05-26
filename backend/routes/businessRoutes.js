@@ -70,6 +70,26 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// backend/routes/businessRoutes.js
+router.post('/accountants/associate', async (req, res) => {
+    const { accountant_id, business_id } = req.body;
+
+    if (!accountant_id || !business_id) {
+        return res.status(400).json({ error: 'Missing accountant_id or business_id' });
+    }
+
+    try {
+        await pool.query(
+            'INSERT INTO accountant_businesses (accountant_id, business_id) VALUES ($1, $2)',
+            [accountant_id, business_id]
+        );
+        res.status(201).json({ message: 'Business successfully associated with accountant' });
+    } catch (err) {
+        console.error('Error associating accountant to business:', err.message);
+        res.status(500).json({ error: 'Association failed' });
+    }
+});
+
 
 
 

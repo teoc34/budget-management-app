@@ -19,7 +19,6 @@ router.post('/signup', async (req, res) => {
             'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
             [name, email, hashedPassword, role || 'user']
         );
-
         res.status(201).json({ message: 'User created successfully', user: result.rows[0] });
     } catch (err) {
         console.error('Error during signup:', err);

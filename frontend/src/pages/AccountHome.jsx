@@ -5,24 +5,29 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 
-
 const EXCLUDED_CATEGORIES = ['Rent', 'Transport', 'Utilities'];
 
-const AccountHome = ({ user }) => {
+const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accountantBusinesses }) => {
+
     const [transactions, setTransactions] = useState([]);
     const [greedySuggestions, setGreedySuggestions] = useState([]);
     const [goalPaths, setGoalPaths] = useState([]);
     const [savingsTarget, setSavingsTarget] = useState(30);
     const [selectedMonth, setSelectedMonth] = useState('');
-
+    const [selectedBusinessName, setSelectedBusinessName] = useState('');
 
     useEffect(() => {
         if (!user) return;
 
         const fetchTransactions = async () => {
             try {
-                const res = await fetch(`http://localhost:5000/api/transactions?user_id=${user.user_id}`);
+                const endpoint = selectedBusinessId
+                    ? `http://localhost:5000/api/transactions?business_id=${selectedBusinessId}`
+                    : `http://localhost:5000/api/transactions?user_id=${user.user_id}`;
+
+                const res = await fetch(endpoint);
                 const data = await res.json();
+
                 setTransactions(data);
                 runGreedyOptimizer(data);
             } catch (err) {
@@ -30,8 +35,26 @@ const AccountHome = ({ user }) => {
             }
         };
 
+
+
+        const fetchBusinessName = async () => {
+            if (selectedBusinessId) {
+                try {
+                    const res = await fetch(`http://localhost:5000/api/businesses/${selectedBusinessId}`);
+                    const data = await res.json();
+                    setSelectedBusinessName(data?.name || '');
+                } catch (err) {
+                    console.error('Failed to load business name:', err);
+                    setSelectedBusinessName('');
+                }
+            } else {
+                setSelectedBusinessName('');
+            }
+        };
+
         fetchTransactions();
-    }, [user, savingsTarget]);
+        fetchBusinessName();
+    }, [user, savingsTarget, selectedBusinessId]);
 
     const runGreedyOptimizer = (data) => {
         const grouped = {};
@@ -95,6 +118,7 @@ const AccountHome = ({ user }) => {
 
         setGoalPaths(best || []);
     };
+
     const filteredTransactions = selectedMonth
         ? transactions.filter(tx => {
             const month = new Date(tx.transaction_date).getMonth() + 1;
@@ -127,7 +151,39 @@ const AccountHome = ({ user }) => {
 
     return (
         <div>
-            <h2 className="text-2xl font-bold mb-6">👋 Hello, {user?.name}!</h2>
+            <h2 className="text-2xl font-bold mb-2">👋 Hello, {user?.name}!</h2>
+
+            {user?.role === 'accountant' && accountantBusinesses?.length > 0 && (
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Business:</label>
+                    <select
+                        value={selectedBusinessId}
+                        onChange={(e) => setSelectedBusinessId(e.target.value)}
+                        className="p-2 border rounded"
+                    >
+                        <option value="">Select a business</option>
+                        {accountantBusinesses
+                            .filter((biz, index, self) =>
+                                index === self.findIndex(b => b.business_id === biz.business_id)
+                            )
+                            .map((biz) => (
+                                <option key={`dropdown-${biz.business_id}`} value={biz.business_id}>
+                                    {biz.name}
+                                </option>
+                            ))}
+
+                    </select>
+
+                </div>
+            )}
+
+            {selectedBusinessId && selectedBusinessName && (
+                <h3 className="text-lg font-semibold text-gray-700 mb-6">
+                    Dashboard for <span className="text-indigo-600">{selectedBusinessName}</span>
+                </h3>
+            )}
+
+
 
             {/* Pie Chart */}
             <div className="bg-white p-6 rounded-xl shadow-md mb-10">
@@ -141,18 +197,11 @@ const AccountHome = ({ user }) => {
                             className="p-2 border rounded"
                         >
                             <option value="">All</option>
-                            <option value="1">January</option>
-                            <option value="2">February</option>
-                            <option value="3">March</option>
-                            <option value="4">April</option>
-                            <option value="5">May</option>
-                            <option value="6">June</option>
-                            <option value="7">July</option>
-                            <option value="8">August</option>
-                            <option value="9">September</option>
-                            <option value="10">October</option>
-                            <option value="11">November</option>
-                            <option value="12">December</option>
+                            {Array.from({ length: 12 }, (_, i) => (
+                                <option key={i + 1} value={i + 1}>
+                                    {format(new Date(2000, i, 1), 'MMMM')}
+                                </option>
+                            ))}
                         </select>
                     </div>
 
@@ -201,10 +250,9 @@ const AccountHome = ({ user }) => {
                     onChange={(e) => setSavingsTarget(Number(e.target.value))}
                     className="mb-4 border p-2 rounded"
                 >
-                    <option value={10}>10%</option>
-                    <option value={20}>20%</option>
-                    <option value={30}>30%</option>
-                    <option value={40}>40%</option>
+                    {[10, 20, 30, 40].map(val => (
+                        <option key={val} value={val}>{val}%</option>
+                    ))}
                 </select>
                 {greedySuggestions.length > 0 ? (
                     <ul className="list-disc pl-6 text-gray-800">

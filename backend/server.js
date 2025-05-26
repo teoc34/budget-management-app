@@ -25,12 +25,15 @@ const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const businessRoutes = require('./routes/businessRoutes');
+const accountantBusinessRoutes = require('./routes/accountantBusinessRoutes');
+
 
 app.use('/api/businesses', businessRoutes);
 app.use('/api', chatRoutes);
 app.use('/api', userRoutes);
 app.use('/api', authRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/accountants', accountantBusinessRoutes);
 
 app.get('/', (req, res) => {
     res.json({ message: 'Welcome to the Budget Management API!' });
