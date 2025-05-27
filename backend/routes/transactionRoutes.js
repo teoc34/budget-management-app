@@ -6,6 +6,9 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 const { spawn } = require('child_process');
+const verifyToken = require('../middleware/verifyToken');
+
+
 
 // Get transactions between two dates
 const getTransactions = async (start, end) => {
@@ -21,36 +24,44 @@ const getTransactions = async (start, end) => {
 };
 
 // Get transactions
-router.get('/', async (req, res) => {
-    const { user_id, business_id } = req.query;
+// GET /api/transactions
+router.get('/', verifyToken, async (req, res) => {
+    const userId = req.user.user_id;
+    const role = req.user.role;
+    const businessId = req.query.business_id; // now passed from frontend
 
     try {
         let result;
 
-        if (business_id) {
-            result = await pool.query(
-                `
+        if (role === 'accountant') {
+            if (!businessId) {
+                return res.status(400).json({ error: 'Business ID required for accountants' });
+            }
+
+            result = await pool.query(`
                 SELECT t.*, u.name AS added_by
                 FROM transactions t
                 JOIN users u ON t.user_id = u.user_id
                 WHERE t.business_id = $1
                 ORDER BY t.transaction_date DESC
-                `,
-                [business_id]
-            );
-        } else if (user_id) {
-            result = await pool.query(
-                `
+            `, [businessId]);
+
+        } else if (role === 'administrator') {
+            result = await pool.query(`
+                SELECT t.*, u.name AS added_by
+                FROM transactions t
+                JOIN users u ON t.user_id = u.user_id
+                ORDER BY t.transaction_date DESC
+            `);
+
+        } else {
+            result = await pool.query(`
                 SELECT t.*, u.name AS added_by
                 FROM transactions t
                 JOIN users u ON t.user_id = u.user_id
                 WHERE t.user_id = $1
                 ORDER BY t.transaction_date DESC
-                `,
-                [user_id]
-            );
-        } else {
-            return res.status(400).json({ error: 'user_id or business_id required' });
+            `, [userId]);
         }
 
         res.json(result.rows);
@@ -60,28 +71,23 @@ router.get('/', async (req, res) => {
     }
 });
 
+
+
 // Add transaction
-router.post('/', async (req, res) => {
-    const { user_id, amount, category, note, transaction_date } = req.body;
+router.post('/', verifyToken, async (req, res) => {
+    const userId = req.user.user_id;
+    const role = req.user.role;
+    let businessId = req.user.business_id;
+    const { amount, category, note, transaction_date } = req.body;
 
     try {
-        const businessResult = await pool.query(
-            'SELECT business_id, role FROM users WHERE user_id = $1',
-            [user_id]
-        );
-
-        const userData = businessResult.rows[0];
-        const role = userData?.role;
-        let business_id = userData?.business_id;
-
-        // Allow override for accountant/admin
         if (role === 'accountant' || role === 'administrator') {
-            business_id = req.body.business_id || null;
+            businessId = req.body.business_id || businessId;
         }
 
         const result = await pool.query(
             'INSERT INTO transactions (user_id, amount, category, note, transaction_date, business_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [user_id, amount, category, note, transaction_date, business_id]
+            [userId, amount, category, note, transaction_date, businessId]
         );
 
         res.status(201).json(result.rows[0]);
@@ -90,6 +96,7 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 // Export transactions
 router.get('/export', async (req, res) => {
@@ -156,7 +163,7 @@ router.get('/export', async (req, res) => {
 });
 
 // Machine learning insights (Python)
-router.post('/ml-insights', async (req, res) => {
+router.post('/ml-insights', verifyToken, async (req, res) => {
     const transactions = req.body;
 
     try {
@@ -183,5 +190,6 @@ router.post('/ml-insights', async (req, res) => {
         res.status(500).json({ error: 'ML processing failed' });
     }
 });
+
 
 module.exports = router;

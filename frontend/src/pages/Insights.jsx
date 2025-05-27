@@ -1,32 +1,49 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 
-const Insights = ({ user }) => {
+const Insights = ({ user, selectedBusinessId }) => {
     const [insights, setInsights] = useState([]);
     const [transactions, setTransactions] = useState([]);
 
     useEffect(() => {
         const fetchAndAnalyze = async () => {
-            try {
-                const res = await fetch(`http://localhost:5000/api/transactions?user_id=${user.user_id}`);
-                const txData = await res.json();
-                setTransactions(txData);
+            if (user.role === 'accountant' && !selectedBusinessId) return;
 
-                const mlRes = await fetch('http://localhost:5000/api/transactions/ml-insights', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ transactions: txData }),
-                });
+            const endpoint = user.role === 'accountant'
+                ? `http://localhost:5000/api/transactions?business_id=${selectedBusinessId}`
+                : `http://localhost:5000/api/transactions`;
 
-                const data = await mlRes.json();
-                setInsights(data);
-            } catch (error) {
-                console.error('Error fetching or analyzing data:', error);
+            const res = await fetch(endpoint, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !Array.isArray(data)) {
+                console.error('Transaction fetch failed:', data);
+                return;
             }
+
+            setTransactions(data);
+
+            const mlRes = await fetch('http://localhost:5000/api/transactions/ml-insights', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify(data),
+            });
+
+            const mlData = await mlRes.json();
+            setInsights(mlData);
         };
 
         fetchAndAnalyze();
-    }, [user]);
+    }, [user, selectedBusinessId]);
+
 
     const getMonthlyTrends = (transactions) => {
         const monthlyData = {};
@@ -61,31 +78,38 @@ const Insights = ({ user }) => {
     const trends = getMonthlyTrends(transactions);
 
     return (
-        <div className="max-w-2xl mx-auto mt-10 bg-white p-6 shadow rounded">
-            <h2 className="text-2xl font-bold mb-6">💡 Machine Learning Insights</h2>
+        <div className="max-w-2xl mx-auto mt-10 bg-white p-6 shadow rounded-xl">
+            <h2 className="text-3xl font-bold mb-6 flex items-center gap-2">
+                💡 Machine Learning Insights
+            </h2>
 
-            <div className="bg-white p-6 rounded-lg shadow mb-6">
-                <h3 className="text-lg font-semibold mb-2">🧠 Overspending Predictions</h3>
+            <div className="bg-gray-50 p-5 rounded-lg shadow-sm mb-6 border border-yellow-100">
+                <h3 className="text-xl font-semibold mb-3 flex items-center gap-2">🧠 Overspending Predictions</h3>
                 {insights.length > 0 ? (
-                    <ul className="list-disc pl-6">
+                    <ul className="space-y-2 text-gray-700">
                         {insights.map((item, idx) => (
-                            <li key={idx}>
-                                ⚠️ You might be overspending on <strong>{item.category}</strong>: {item.amount.toFixed(2)} RON
+                            <li key={idx} className="flex items-center gap-2">
+                                ⚠️ <span>You might be overspending on <strong>{item.category}</strong>: <span className="text-red-600 font-bold">{item.amount.toFixed(2)} RON</span></span>
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <p className="text-gray-500">No significant overspending detected.</p>
+                    <p className="text-gray-500">✅ No significant overspending detected.</p>
                 )}
             </div>
 
-            <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold mb-2">📊 Top Categories with Trend</h3>
-                <ul className="space-y-2">
+            <div className="bg-gray-50 p-5 rounded-lg shadow-sm border border-blue-100">
+                <h3 className="text-xl font-semibold mb-3 flex items-center gap-2">📊 Top Categories with Trend</h3>
+                <ul className="divide-y divide-gray-200">
                     {trends.map(item => (
-                        <li key={item.category} className="flex justify-between">
+                        <li key={item.category} className="flex justify-between py-2 text-gray-700">
                             <span>{item.category}</span>
-                            <span className="text-xl">{item.trend}</span>
+                            <span className={`text-xl ${item.trend === '↑' ? 'text-green-600 animate-bounce' :
+                                item.trend === '↓' ? 'text-red-600 animate-pulse' :
+                                    'text-gray-500'
+                                }`}>
+                                {item.trend}
+                            </span>
                         </li>
                     ))}
                 </ul>

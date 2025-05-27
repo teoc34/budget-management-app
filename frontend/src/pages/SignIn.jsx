@@ -19,10 +19,15 @@ const SignIn = () => {
             });
 
             const data = await res.json();
+            console.log('👉 Response Status:', res.status);
+            console.log('👉 Response Body:', data);
+
             if (res.ok) {
-                localStorage.setItem('user', JSON.stringify(data.user));
-                navigate('/dashboard');
-            } else {
+                localStorage.setItem('token', data.token);              // ✅ Token
+                localStorage.setItem('user', JSON.stringify(data.user)); // ✅ User (MISSING before)
+                navigate('/dashboard/accounthome');
+            }
+            else {
                 alert(data.error || 'Signin failed');
             }
         } catch (err) {
@@ -30,6 +35,7 @@ const SignIn = () => {
             alert('Signin error. Check console for details.');
         }
     };
+
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100">

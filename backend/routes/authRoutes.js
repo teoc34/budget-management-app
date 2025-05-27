@@ -3,6 +3,8 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 require('dotenv').config();
+const jwt = require('jsonwebtoken'); // add this at the top if not already present
+
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -29,6 +31,8 @@ router.post('/signup', async (req, res) => {
 
 // Signin Route
 router.post('/signin', async (req, res) => {
+    console.log('🔐 /signin endpoint hit');
+
     const { email, password } = req.body;
 
     try {
@@ -39,27 +43,32 @@ router.post('/signin', async (req, res) => {
         }
 
         const user = userResult.rows[0];
-
         const validPassword = await bcrypt.compare(password, user.password_hash);
 
         if (!validPassword) {
             return res.status(400).json({ error: 'Incorrect password' });
         }
 
-        res.status(200).json({
+        const token = jwt.sign(
+            { user_id: user.user_id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        return res.status(200).json({
             message: 'Login successful',
             user: {
-                user_id: user.user_id,
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                business_id: user.business_id
-            }
+                user_id: user.user_id
+            },
+            token
         });
 
     } catch (err) {
         console.error('Error during signin:', err);
-        res.status(500).json({ error: 'Signin failed' });
+        return res.status(500).json({ error: 'Signin failed' });
     }
 });
 

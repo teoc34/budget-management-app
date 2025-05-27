@@ -3,6 +3,10 @@ import Homepage from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
+import 'aos/dist/aos.css';
+import AOS from 'aos';
+AOS.init();
+
 
 function App() {
   return (

@@ -28,22 +28,28 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
 
         const fetchTransactions = async () => {
             try {
-                let endpoint = '';
+                let endpoint = 'http://localhost:5000/api/transactions';
 
-                if (user.role === 'administrator') {
-                    endpoint = `http://localhost:5000/api/transactions?business_id=${user.business_id}`;
-                } else if (user.role === 'accountant' && selectedBusinessId) {
-                    endpoint = `http://localhost:5000/api/transactions?business_id=${selectedBusinessId}`;
-                } else {
-                    endpoint = `http://localhost:5000/api/transactions?user_id=${user.user_id}`;
+                if (user.role === 'accountant' && selectedBusinessId) {
+                    endpoint += `?business_id=${selectedBusinessId}`;
                 }
 
+                const res = await fetch(endpoint, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
 
-                const res = await fetch(endpoint);
                 const data = await res.json();
+                if (Array.isArray(data)) {
+                    setTransactions(data);
+                    runGreedyOptimizer(data);
+                } else {
+                    console.error('Unexpected data format:', data);
+                    setTransactions([]);
+                }
 
-                setTransactions(data);
-                runGreedyOptimizer(data);
             } catch (err) {
                 console.error('Error fetching transactions:', err);
             }
@@ -197,33 +203,32 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
     };
 
 
+
     return (
         <div>
             <h2 className="text-2xl font-bold mb-2">👋 Hello, {user?.name}!</h2>
 
-            {user?.role === 'accountant' && accountantBusinesses?.length > 0 && (
-                <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Business:</label>
+            {user.role === 'accountant' && accountantBusinesses.length > 0 && (
+                <div className="mb-4">
+                    <label className="block mb-1 font-medium">Select Business</label>
                     <select
                         value={selectedBusinessId}
-                        onChange={(e) => setSelectedBusinessId(e.target.value)}
-                        className="p-2 border rounded"
+                        onChange={(e) => {
+                            setSelectedBusinessId(e.target.value);
+                            fetchTransactions(); // reload transactions after business selection
+                        }}
+                        className="w-full p-2 border rounded"
                     >
-                        <option value="">Select a business</option>
-                        {accountantBusinesses
-                            .filter((biz, index, self) =>
-                                index === self.findIndex(b => b.business_id === biz.business_id)
-                            )
-                            .map((biz) => (
-                                <option key={`dropdown-${biz.business_id}`} value={biz.business_id}>
-                                    {biz.name}
-                                </option>
-                            ))}
-
+                        <option value="">-- Choose Business --</option>
+                        {accountantBusinesses.map((biz) => (
+                            <option key={biz.business_id} value={biz.business_id}>
+                                {biz.name}
+                            </option>
+                        ))}
                     </select>
-
                 </div>
             )}
+
 
             {selectedBusinessId && selectedBusinessName && (
                 <h3 className="text-lg font-semibold text-gray-700 mb-6">

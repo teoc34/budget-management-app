@@ -6,8 +6,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 import Papa from 'papaparse';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
 
-const Transactions = () => {
-    const [transactions, setTransactions] = useState([]);
+const Transactions = ({ user, selectedBusinessId }) => {
+    const [filteredTransactions, setFilteredTransactions] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newTransaction, setNewTransaction] = useState({
         amount: '',
@@ -16,13 +16,14 @@ const Transactions = () => {
         transaction_date: new Date().toISOString().split('T')[0],
         business_id: ''
     });
-    const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')));
+    //const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')));
     const [accountantBusinesses, setAccountantBusinesses] = useState([]);
     const [toastMessage, setToastMessage] = useState('');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [startMonth, setStartMonth] = useState('');
     const [endMonth, setEndMonth] = useState('');
     const [exportWarning, setExportWarning] = useState('');
+
 
     useEffect(() => {
         fetchTransactions();
@@ -36,13 +37,41 @@ const Transactions = () => {
 
     const fetchTransactions = async () => {
         try {
-            const res = await fetch(`http://localhost:5000/api/transactions?user_id=${user.user_id}`);
+            if (user.role === 'accountant' && !selectedBusinessId) {
+                console.warn('Accountant must select a business.');
+                return;
+            }
+
+            const query = user.role === 'accountant'
+                ? `?business_id=${selectedBusinessId}`
+                : '';
+
+
+            const res = await fetch(`http://localhost:5000/api/transactions${query}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+            });
+
             const data = await res.json();
-            setTransactions(data);
-        } catch (error) {
-            console.error('Error fetching transactions:', error);
+
+            if (Array.isArray(data)) {
+                setFilteredTransactions(data);
+            } else {
+                console.error('Unexpected data format:', data);
+                setFilteredTransactions([]);
+            }
+        } catch (err) {
+            console.error('Error fetching transactions:', err);
+            setFilteredTransactions([]);
         }
     };
+    const totalSpent = Array.isArray(filteredTransactions)
+        ? filteredTransactions.reduce((acc, tx) => acc + parseFloat(tx.amount), 0)
+        : 0;
+
+
+
 
     const triggerToast = (message) => {
         setToastMessage(message);
@@ -65,9 +94,13 @@ const Transactions = () => {
         try {
             const res = await fetch('http://localhost:5000/api/transactions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
                 body: JSON.stringify(payload),
             });
+
             if (res.ok) {
                 triggerToast('Transaction added!');
                 setIsModalOpen(false);
@@ -82,9 +115,33 @@ const Transactions = () => {
         }
     };
 
-    const handleExport = () => {
-        window.open('http://localhost:5000/api/transactions/export', '_blank');
+    const handleExportClick = async (format) => {
+        try {
+            const response = await fetch(`http://localhost:5000/api/transactions/export?format=${format}&start=${startMonth}-01&end=${getEndDate(endMonth)}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Export failed');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `transactions.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (err) {
+            console.error(err);
+            setExportWarning('Failed to export transactions.');
+        }
     };
+
 
     const getEndDate = (yearMonth) => {
         if (!yearMonth || !yearMonth.includes('-')) return null;
@@ -105,11 +162,11 @@ const Transactions = () => {
 
             {toastMessage && <div className="mb-4 text-green-600 font-medium">{toastMessage}</div>}
 
-            {transactions.length === 0 ? (
+            {filteredTransactions.length === 0 ? (
                 <p className="text-gray-500">No transactions yet.</p>
             ) : (
                 <div className="space-y-4">
-                    {transactions.map((tx) => (
+                    {filteredTransactions.map((tx) => (
                         <div key={tx.transaction_id} className="p-4 bg-gray-100 rounded-md shadow">
                             <div className="flex justify-between">
                                 <div>
@@ -164,22 +221,19 @@ const Transactions = () => {
                         </div>
 
 
-                        {startMonth && endMonth && new Date(startMonth) <= new Date(endMonth) && (
+                        {startMonth && endMonth && new Date(startMonth) <= new Date(endMonth) ? (
                             <div className="flex gap-4 justify-center mb-4">
-                                <a
-                                    href={`http://localhost:5000/api/transactions/export?format=excel&start=${startMonth}-01&end=${getEndDate(endMonth)}`}
-                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                                >
+                                <button onClick={() => handleExportClick('excel')} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
                                     Excel
-                                </a>
-                                <a
-                                    href={`http://localhost:5000/api/transactions/export?format=pdf&start=${startMonth}-01&end=${getEndDate(endMonth)}`}
-                                    className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-                                >
+                                </button>
+                                <button onClick={() => handleExportClick('pdf')} className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">
                                     PDF
-                                </a>
+                                </button>
                             </div>
+                        ) : (
+                            <p className="text-sm text-red-500">Please select a valid date range to export.</p>
                         )}
+
 
 
                         <button

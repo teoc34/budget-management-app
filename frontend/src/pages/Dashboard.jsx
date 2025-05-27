@@ -75,8 +75,20 @@ const Dashboard = () => {
                     />
 
                     <Route path="account" element={<Account user={user} />} />
-                    <Route path="insights" element={<Insights user={user} />} />
-                    <Route path="transactions" element={<Transactions user={user} />} />
+                    <Route
+                        path="insights"
+                        element={
+                            <Insights
+                                user={user}
+                                selectedBusinessId={selectedBusinessId || ''}
+                            />
+                        }
+                    />
+
+
+
+                    <Route path="transactions" element={<Transactions user={user} selectedBusinessId={selectedBusinessId} />} />
+
                     {user?.role === 'accountant' && (
                         <Route path="accountant/businesses" element={<AccountantBusinesses user={user} />} />
                     )}
