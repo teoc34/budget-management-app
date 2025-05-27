@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import {
     PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-    LineChart, Line, XAxis, YAxis
+    LineChart, Line, XAxis, YAxis, BarChart, Bar
 } from 'recharts';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+
 
 const EXCLUDED_CATEGORIES = ['Rent', 'Transport', 'Utilities'];
 
 const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accountantBusinesses }) => {
+
+    const navigate = useNavigate();
 
     const [transactions, setTransactions] = useState([]);
     const [greedySuggestions, setGreedySuggestions] = useState([]);
@@ -15,15 +19,25 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
     const [savingsTarget, setSavingsTarget] = useState(30);
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedBusinessName, setSelectedBusinessName] = useState('');
+    const [showInsightsModal, setShowInsightsModal] = useState(false);
+    const [insights, setInsights] = useState([]);
+
 
     useEffect(() => {
         if (!user) return;
 
         const fetchTransactions = async () => {
             try {
-                const endpoint = selectedBusinessId
-                    ? `http://localhost:5000/api/transactions?business_id=${selectedBusinessId}`
-                    : `http://localhost:5000/api/transactions?user_id=${user.user_id}`;
+                let endpoint = '';
+
+                if (user.role === 'administrator') {
+                    endpoint = `http://localhost:5000/api/transactions?business_id=${user.business_id}`;
+                } else if (user.role === 'accountant' && selectedBusinessId) {
+                    endpoint = `http://localhost:5000/api/transactions?business_id=${selectedBusinessId}`;
+                } else {
+                    endpoint = `http://localhost:5000/api/transactions?user_id=${user.user_id}`;
+                }
+
 
                 const res = await fetch(endpoint);
                 const data = await res.json();
@@ -34,7 +48,6 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                 console.error('Error fetching transactions:', err);
             }
         };
-
 
 
         const fetchBusinessName = async () => {
@@ -56,26 +69,27 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         fetchBusinessName();
     }, [user, savingsTarget, selectedBusinessId]);
 
+    // Greedy Optimizer with percentage saving target
     const runGreedyOptimizer = (data) => {
-        const grouped = {};
-        data.forEach(tx => {
-            if (!EXCLUDED_CATEGORIES.includes(tx.category)) {
-                grouped[tx.category] = (grouped[tx.category] || 0) + parseFloat(tx.amount);
-            }
+        const optionalExpenses = data.filter(tx => !EXCLUDED_CATEGORIES.includes(tx.category));
+        const categorySums = {};
+
+        optionalExpenses.forEach(tx => {
+            categorySums[tx.category] = (categorySums[tx.category] || 0) + parseFloat(tx.amount);
         });
 
-        const sorted = Object.entries(grouped).sort((a, b) => b[1] - a[1]);
-        const total = sorted.reduce((sum, [, value]) => sum + value, 0);
-        const target = total * (savingsTarget / 100);
+        const sortedCategories = Object.entries(categorySums).sort((a, b) => b[1] - a[1]);
+        const totalOptional = sortedCategories.reduce((sum, [, value]) => sum + value, 0);
+        const savingTarget = totalOptional * (savingsTarget / 100);
 
-        let saved = 0;
+        let remaining = savingTarget;
         const suggestions = [];
 
-        for (const [category, value] of sorted) {
-            if (saved >= target) break;
-            const cut = Math.min(value, target - saved);
+        for (const [category, amount] of sortedCategories) {
+            if (remaining <= 0) break;
+            const cut = Math.min(amount, remaining);
             suggestions.push({ category, cut: cut.toFixed(2) });
-            saved += cut;
+            remaining -= cut;
         }
 
         setGreedySuggestions(suggestions);
@@ -92,32 +106,35 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
     const handleGoalSelect = (amount) => {
         const optional = transactions
             .filter(tx => !EXCLUDED_CATEGORIES.includes(tx.category))
-            .map(tx => ({ ...tx, amount: parseFloat(tx.amount) }));
+            .map(tx => ({ ...tx, amount: parseFloat(tx.amount) }))
+            .sort((a, b) => b.amount - a.amount); // try bigger values first for shorter paths
 
-        const solutions = [];
-        const path = [];
+        const resultPaths = [];
+        const currentPath = [];
 
         const backtrack = (index, currentSum) => {
             if (currentSum >= amount) {
-                solutions.push([...path]);
+                resultPaths.push([...currentPath]);
                 return;
             }
+
             for (let i = index; i < optional.length; i++) {
-                path.push(optional[i]);
+                currentPath.push(optional[i]);
                 backtrack(i + 1, currentSum + optional[i].amount);
-                path.pop();
+                currentPath.pop();
             }
         };
 
         backtrack(0, 0);
 
-        const best = solutions.sort((a, b) =>
-            a.reduce((acc, tx) => acc + tx.amount, 0) -
-            b.reduce((acc, tx) => acc + tx.amount, 0)
+        const bestPath = resultPaths.sort((a, b) =>
+            a.reduce((sum, tx) => sum + tx.amount, 0) -
+            b.reduce((sum, tx) => sum + tx.amount, 0)
         )[0];
 
-        setGoalPaths(best || []);
+        setGoalPaths(bestPath || []);
     };
+
 
     const filteredTransactions = selectedMonth
         ? transactions.filter(tx => {
@@ -148,6 +165,37 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
     }, []);
 
     const COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#ec4899"];
+
+    const monthlyCategoryData = transactions.reduce((acc, tx) => {
+        const month = format(new Date(tx.transaction_date), 'yyyy-MM');
+        const category = tx.category;
+        const amount = Number(tx.amount);
+
+        const found = acc.find(entry => entry.month === month);
+        if (found) {
+            found[category] = (found[category] || 0) + amount;
+        } else {
+            acc.push({ month, [category]: amount });
+        }
+
+        return acc;
+    }, []);
+
+    const generateInsights = () => {
+        const grouped = {};
+        transactions.forEach(tx => {
+            grouped[tx.category] = (grouped[tx.category] || 0) + parseFloat(tx.amount);
+        });
+
+        const sorted = Object.entries(grouped)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 2); // Top 2 categories
+
+        const result = sorted.map(([category, amount]) => ({ category, amount }));
+        setInsights(result);
+        setShowInsightsModal(true);
+    };
+
 
     return (
         <div>
@@ -241,10 +289,46 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                 </ResponsiveContainer>
             </div>
 
+            <div className="bg-white p-6 rounded-xl shadow-md mb-10">
+                <h3 className="text-xl font-semibold mb-4">📊 Monthly Spending by Category</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={monthlyCategoryData}>
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="Groceries" stackId="a" fill="#4f46e5" />
+                        <Bar dataKey="Transport" stackId="a" fill="#10b981" />
+                        <Bar dataKey="Entertainment" stackId="a" fill="#f59e0b" />
+                        <Bar dataKey="Rent" stackId="a" fill="#ef4444" />
+                        <Bar dataKey="Utilities" stackId="a" fill="#6366f1" />
+                        <Bar dataKey="Other" stackId="a" fill="#ec4899" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+
+            <div className="mb-6">
+                <button
+                    onClick={() => navigate('/dashboard/insights')}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg shadow transition duration-200"
+                >
+                    <span>🔍</span>
+                    <span>See Insights</span>
+                </button>
+            </div>
+
+
+
+
             {/* Greedy Optimizer */}
             <div className="bg-white p-6 rounded-xl shadow-md mb-10">
-                <h3 className="text-xl font-semibold mb-4">💡 Budget Optimizer (Greedy)</h3>
-                <label className="block mb-2 text-gray-700">Select how much you want to save this month:</label>
+                <h3 className="text-xl font-semibold mb-4">💡 Smart Budget Suggestions <span
+                    className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded cursor-help"
+                    title="Implemented with Greedy logic"
+                >
+                    ?
+                </span></h3>
+                <label className="block mb-2 text-gray-700">How much would you like to save from optional expenses?</label>
                 <select
                     value={savingsTarget}
                     onChange={(e) => setSavingsTarget(Number(e.target.value))}
@@ -258,41 +342,46 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                     <ul className="list-disc pl-6 text-gray-800">
                         {greedySuggestions.map((item, idx) => (
                             <li key={idx}>
-                                Cut <strong>{item.cut} RON</strong> from <strong>{item.category}</strong>
+                                ✂️ Cut <strong>{item.cut} RON</strong> from <strong>{item.category}</strong>
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <p className="text-gray-500">Not enough data to generate suggestions yet.</p>
+                    <p className="text-gray-500">Not enough data for smart suggestions.</p>
                 )}
             </div>
 
-            {/* Backtracking Goal Planner */}
+
             <div className="bg-white p-6 rounded-xl shadow-md">
-                <h3 className="text-xl font-semibold mb-4">🎯 Financial Goal Planner (Backtracking)</h3>
-                <p className="mb-2">Select a financial goal:</p>
+                <h3 className="text-xl font-semibold mb-4">🎯 Financial Goal Planner <span
+                    className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded cursor-help"
+                    title="Implemented with Backtracking logic"
+                >
+                    ?
+                </span></h3>
+                <p className="mb-2 text-gray-700">Select a goal and let us build your custom savings roadmap.</p>
                 <select
                     onChange={(e) => handleGoalSelect(Number(e.target.value))}
                     className="mb-4 border p-2 rounded"
                 >
                     <option value="">Choose a goal</option>
                     {financialGoals.map((g, idx) => (
-                        <option key={idx} value={g.cost}>{g.label}</option>
+                        <option key={idx} value={g.cost}>{g.label} – {g.cost} RON</option>
                     ))}
                 </select>
                 {goalPaths.length > 0 ? (
                     <ul className="list-disc pl-6 text-gray-800">
                         {goalPaths.map((tx, idx) => (
                             <li key={idx}>
-                                Save <strong>{tx.amount} RON</strong> from <strong>{tx.category}</strong> on {format(new Date(tx.transaction_date), 'dd MMMM yyyy')}
+                                💰 Save <strong>{tx.amount} RON</strong> from <strong>{tx.category}</strong> on {format(new Date(tx.transaction_date), 'dd MMM yyyy')}
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <p className="text-gray-500">Select a goal to see possible savings paths.</p>
+                    <p className="text-gray-500">No savings route found yet.</p>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

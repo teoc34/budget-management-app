@@ -1,10 +1,8 @@
-// routes/accountantBusinessRoutes.js
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 
 // Link accountant to a business
-// accountantBusinessRoutes.js
 router.post('/associate', async (req, res) => {
     const { accountant_id, business_id } = req.body;
     try {
@@ -20,7 +18,7 @@ router.post('/associate', async (req, res) => {
 });
 
 
-// Get all businesses for an accountant
+// businesses for an accountant
 router.get('/:accountant_id', async (req, res) => {
     const { accountant_id } = req.params;
     try {

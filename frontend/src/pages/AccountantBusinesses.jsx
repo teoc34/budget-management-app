@@ -73,8 +73,8 @@ const AccountantBusinesses = ({ user }) => {
 
             setMessage('✅ Successfully associated with business!');
             setSelectedBusinessId('');
-            await fetchAssociatedBusinesses(); // refresh list
-            await fetchAllBusinesses();        // refresh dropdown
+            await fetchAssociatedBusinesses();
+            await fetchAllBusinesses();
         } catch (err) {
             console.error('Error associating business:', err);
             setMessage('❌ Association failed.');

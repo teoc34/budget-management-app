@@ -70,7 +70,6 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// backend/routes/businessRoutes.js
 router.post('/accountants/associate', async (req, res) => {
     const { accountant_id, business_id } = req.body;
 
@@ -89,9 +88,5 @@ router.post('/accountants/associate', async (req, res) => {
         res.status(500).json({ error: 'Association failed' });
     }
 });
-
-
-
-
 
 module.exports = router;

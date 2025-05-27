@@ -5,6 +5,8 @@ import Account from './Account';
 import Transactions from './Transactions';
 import AdminBusinesses from './AdminBusinesses';
 import AccountantBusinesses from './AccountantBusinesses';
+import Insights from './Insights';
+
 
 const Dashboard = () => {
     const [user, setUser] = useState(null);
@@ -73,6 +75,7 @@ const Dashboard = () => {
                     />
 
                     <Route path="account" element={<Account user={user} />} />
+                    <Route path="insights" element={<Insights user={user} />} />
                     <Route path="transactions" element={<Transactions user={user} />} />
                     {user?.role === 'accountant' && (
                         <Route path="accountant/businesses" element={<AccountantBusinesses user={user} />} />

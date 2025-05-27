@@ -50,7 +50,6 @@ router.put('/users/:id', async (req, res) => {
     let { phone, address, emergency_contact, business_id } = req.body;
 
     try {
-        // If business_id is an empty string, set it to null
         if (business_id === '') {
             business_id = null;
         }

@@ -9,6 +9,7 @@ const Account = ({ user }) => {
     });
 
     const [businessName, setBusinessName] = useState('');
+    const [businesses, setBusinesses] = useState([]);
     const [message, setMessage] = useState('');
 
     useEffect(() => {
@@ -22,6 +23,12 @@ const Account = ({ user }) => {
             fetchBusinessName(form.business_id);
         }
     }, [form.business_id]);
+
+    useEffect(() => {
+        if (user?.role === 'user' && !form.business_id) {
+            fetchAllBusinesses();
+        }
+    }, [user, form.business_id]);
 
     const fetchUserData = async () => {
         try {
@@ -45,6 +52,16 @@ const Account = ({ user }) => {
             if (data?.name) setBusinessName(data.name);
         } catch (error) {
             console.error("Error fetching business name:", error);
+        }
+    };
+
+    const fetchAllBusinesses = async () => {
+        try {
+            const res = await fetch('http://localhost:5000/api/businesses');
+            const data = await res.json();
+            setBusinesses(data);
+        } catch (error) {
+            console.error("Error fetching businesses:", error);
         }
     };
 
@@ -104,15 +121,33 @@ const Account = ({ user }) => {
                         className="w-full p-2 border rounded"
                     />
                 </div>
-                {user.role !== 'accountant' && (
+
+                {/* Business logic based on role */}
+                {user.role === 'user' && (
                     <div>
                         <label className="block font-semibold">Business</label>
-                        <input
-                            type="text"
-                            value={businessName ? businessName : "—"}
-                            className="w-full p-2 border rounded bg-gray-100"
-                            disabled
-                        />
+                        {form.business_id ? (
+                            <input
+                                type="text"
+                                value={businessName || '—'}
+                                className="w-full p-2 border rounded bg-gray-100"
+                                disabled
+                            />
+                        ) : (
+                            <select
+                                value={form.business_id}
+                                onChange={(e) => setForm({ ...form, business_id: e.target.value })}
+                                className="w-full p-2 border rounded"
+                                required
+                            >
+                                <option value="">Select a business</option>
+                                {businesses.map(b => (
+                                    <option key={b.business_id} value={b.business_id}>
+                                        {b.name}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                 )}
 

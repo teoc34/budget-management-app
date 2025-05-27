@@ -19,6 +19,10 @@ const Transactions = () => {
     const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')));
     const [accountantBusinesses, setAccountantBusinesses] = useState([]);
     const [toastMessage, setToastMessage] = useState('');
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [startMonth, setStartMonth] = useState('');
+    const [endMonth, setEndMonth] = useState('');
+    const [exportWarning, setExportWarning] = useState('');
 
     useEffect(() => {
         fetchTransactions();
@@ -28,6 +32,7 @@ const Transactions = () => {
                 .then(data => setAccountantBusinesses(data));
         }
     }, []);
+
 
     const fetchTransactions = async () => {
         try {
@@ -77,6 +82,18 @@ const Transactions = () => {
         }
     };
 
+    const handleExport = () => {
+        window.open('http://localhost:5000/api/transactions/export', '_blank');
+    };
+
+    const getEndDate = (yearMonth) => {
+        if (!yearMonth || !yearMonth.includes('-')) return null;
+
+        const [year, month] = yearMonth.split('-').map(Number);
+        const lastDay = new Date(year, month, 0);
+        return lastDay.toISOString().split('T')[0];
+    };
+
     return (
         <div className="bg-white p-6 rounded shadow-md">
             <div className="flex justify-between items-center mb-4">
@@ -98,8 +115,8 @@ const Transactions = () => {
                                 <div>
                                     <h4 className="font-semibold">{tx.category}</h4>
                                     <p className="text-sm text-gray-600">{tx.note || 'No note'}</p>
-                                    <p className="text-xs text-gray-400 italic">
-                                        Added by: {tx.added_by || 'Unknown'}
+                                    <p className="text-xs text-gray-500">
+                                        Added by {tx.added_by}
                                     </p>
                                 </div>
                                 <div className="text-right">
@@ -111,6 +128,70 @@ const Transactions = () => {
                     ))}
                 </div>
             )}
+
+            <div className="mt-6">
+                <button
+                    onClick={() => setIsExportModalOpen(true)}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                    Export Transactions
+                </button>
+            </div>
+
+
+            {isExportModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg w-full max-w-sm text-center relative">
+                        <h3 className="text-lg font-semibold mb-4">Choose export format</h3>
+
+                        <div className="mb-4 text-left">
+                            <label className="block mb-1 font-medium">Start Month</label>
+                            <input
+                                type="month"
+                                value={startMonth}
+                                onChange={(e) => setStartMonth(e.target.value)}
+                                className="w-full p-2 border rounded"
+                            />
+                        </div>
+                        <div className="mb-4 text-left">
+                            <label className="block mb-1 font-medium">End Month</label>
+                            <input
+                                type="month"
+                                value={endMonth}
+                                onChange={(e) => setEndMonth(e.target.value)}
+                                className="w-full p-2 border rounded"
+                            />
+                        </div>
+
+
+                        {startMonth && endMonth && new Date(startMonth) <= new Date(endMonth) && (
+                            <div className="flex gap-4 justify-center mb-4">
+                                <a
+                                    href={`http://localhost:5000/api/transactions/export?format=excel&start=${startMonth}-01&end=${getEndDate(endMonth)}`}
+                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                                >
+                                    Excel
+                                </a>
+                                <a
+                                    href={`http://localhost:5000/api/transactions/export?format=pdf&start=${startMonth}-01&end=${getEndDate(endMonth)}`}
+                                    className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                                >
+                                    PDF
+                                </a>
+                            </div>
+                        )}
+
+
+                        <button
+                            onClick={() => setIsExportModalOpen(false)}
+                            className="text-sm text-indigo-600 hover:underline"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
 
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
