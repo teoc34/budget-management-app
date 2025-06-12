@@ -7,7 +7,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const { spawn } = require('child_process');
 const verifyToken = require('../middleware/verifyToken');
-
+const { runPatternAnalysis } = require('../scripts/ml-patterns-wrapper');
 
 
 // Get transactions between two dates
@@ -24,11 +24,10 @@ const getTransactions = async (start, end) => {
 };
 
 // Get transactions
-// GET /api/transactions
 router.get('/', verifyToken, async (req, res) => {
     const userId = req.user.user_id;
     const role = req.user.role;
-    const businessId = req.query.business_id; // now passed from frontend
+    const businessId = req.query.business_id;
 
     try {
         let result;
@@ -40,23 +39,50 @@ router.get('/', verifyToken, async (req, res) => {
 
             result = await pool.query(`
                 SELECT t.*, u.name AS added_by
-                FROM transactions t
-                JOIN users u ON t.user_id = u.user_id
-                WHERE t.business_id = $1
-                ORDER BY t.transaction_date DESC
+FROM transactions t
+JOIN users u ON t.user_id = u.user_id
+WHERE t.business_id = $1
+  AND (
+    t.transaction_type = 'income'
+    OR (t.transaction_type = 'expense' AND t.is_business_expense = true)
+  )
+ORDER BY t.transaction_date DESC
+
             `, [businessId]);
 
         } else if (role === 'administrator') {
             result = await pool.query(`
-                SELECT t.*, u.name AS added_by
-                FROM transactions t
-                JOIN users u ON t.user_id = u.user_id
-                ORDER BY t.transaction_date DESC
-            `);
+    SELECT 
+    t.transaction_id,
+    t.user_id,
+    t.amount,
+    t.transaction_type,
+    CASE 
+        WHEN u.role = 'user' THEN 'Employee Spendings'
+        ELSE t.category
+    END AS category,
+    t.note,
+    t.transaction_date,
+    t.business_id,
+    t.is_business_expense,
+    t.client_name,
+    u.name AS added_by
+FROM transactions t
+JOIN users u ON t.user_id = u.user_id
+WHERE t.business_id IN (
+    SELECT business_id FROM businesses WHERE created_by = $1
+)
+AND (
+    t.transaction_type = 'income'
+    OR (t.transaction_type = 'expense' AND t.is_business_expense = true)
+)
+ORDER BY t.transaction_date DESC
+
+`, [userId]);
 
         } else {
             result = await pool.query(`
-                SELECT t.*, u.name AS added_by
+                SELECT t.*, u.name AS added_by, t.transaction_type
                 FROM transactions t
                 JOIN users u ON t.user_id = u.user_id
                 WHERE t.user_id = $1
@@ -73,21 +99,35 @@ router.get('/', verifyToken, async (req, res) => {
 
 
 
+
+
 // Add transaction
 router.post('/', verifyToken, async (req, res) => {
     const userId = req.user.user_id;
     const role = req.user.role;
-    let businessId = req.user.business_id;
-    const { amount, category, note, transaction_date } = req.body;
+    const { amount, category, note, transaction_date, business_id, is_business_expense } = req.body;
+    const added_by = userId;
+
+    // 🔹 PASUL 2 – logica pentru businessId
+    let businessId = null;
+
+    if (role === 'administrator' || role === 'accountant') {
+        businessId = business_id || null;
+    } else if (role === 'user') {
+        if (is_business_expense === true) {
+            businessId = req.user.business_id;
+        } else {
+            businessId = null;
+        }
+    }
 
     try {
-        if (role === 'accountant' || role === 'administrator') {
-            businessId = req.body.business_id || businessId;
-        }
-
         const result = await pool.query(
-            'INSERT INTO transactions (user_id, amount, category, note, transaction_date, business_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [userId, amount, category, note, transaction_date, businessId]
+            `INSERT INTO transactions 
+             (user_id, amount, category, note, transaction_date, business_id, added_by, is_business_expense) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+             RETURNING *`,
+            [userId, amount, category, note, transaction_date, businessId, added_by, is_business_expense]
         );
 
         res.status(201).json(result.rows[0]);
@@ -98,71 +138,110 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 
+
 // Export transactions
-router.get('/export', async (req, res) => {
-    const { format = 'excel', start, end } = req.query;
-    const fromDate = start || '2000-01-01';
-    const toDate = end || new Date().toISOString().split('T')[0];
+router.get('/export', verifyToken, async (req, res) => {
+    const { start, end, category, business_id, format = 'excel' } = req.query;
+    const userId = req.user.user_id;
+    const role = req.user.role;
 
     try {
-        const transactions = await getTransactions(fromDate, toDate);
+        let query = `
+  SELECT 
+    t.transaction_date AS date, 
+    t.note AS description, 
+    t.category, 
+    t.amount,
+    t.added_by,
+    b.name AS business
+  FROM transactions t
+  JOIN users u ON t.user_id = u.user_id
+  LEFT JOIN businesses b ON t.business_id = b.business_id
+  WHERE 1=1
+`;
 
-        if (format === 'pdf') {
-            const doc = new PDFDocument();
-            const filePath = path.join(__dirname, '../exports/transactions.pdf');
-            const writeStream = fs.createWriteStream(filePath);
-            doc.pipe(writeStream);
 
-            doc.fontSize(18).text('Transactions Report', { align: 'center' });
-            doc.moveDown();
+        const params = [];
 
-            transactions.forEach(tx => {
-                doc.fontSize(12).text(`Date: ${tx.transaction_date}`);
-                doc.text(`Category: ${tx.category}`);
-                doc.text(`Amount: ${tx.amount} RON`);
-                doc.text(`Note: ${tx.note || '-'}`);
-                doc.text(`Added by: ${tx.added_by || 'Unknown'}`);
-                doc.moveDown();
-            });
+        if (role === 'user') {
+            query += ` AND t.user_id = $${params.length + 1}`;
+            params.push(user_id);
+        } else if ((role === 'accountant' || role === 'administrator') && business_id) {
+            query += ` AND t.business_id = $${params.length + 1} AND t.is_business_expense = true`;
+            params.push(business_id);
+        }
 
-            doc.end();
 
-            writeStream.on('finish', () => {
-                res.download(filePath, 'transactions.pdf');
-            });
-        } else {
+        if (start && end) {
+            query += ` AND t.transaction_date BETWEEN $${params.length + 1} AND $${params.length + 2}`;
+            params.push(start, end);
+        }
+        if (category) {
+            query += ` AND t.category = $${params.length + 1}`;
+            params.push(category);
+        }
+        if (business_id) {
+            query += ` AND t.business_id = $${params.length + 1}`;
+            params.push(business_id);
+        }
+
+
+
+        const result = await pool.query(query, params);
+
+        if (format === 'excel') {
             const workbook = new exceljs.Workbook();
             const worksheet = workbook.addWorksheet('Transactions');
 
             worksheet.columns = [
-                { header: 'Date', key: 'transaction_date', width: 20 },
+                { header: 'Date', key: 'date', width: 15 },
+                { header: 'Description', key: 'description', width: 30 },
                 { header: 'Category', key: 'category', width: 20 },
-                { header: 'Amount', key: 'amount', width: 15 },
-                { header: 'Note', key: 'note', width: 30 },
-                { header: 'Added by', key: 'added_by', width: 20 },
+                { header: 'Amount', key: 'amount', width: 10 },
+                { header: 'Added By', key: 'added_by', width: 20 },
+                { header: 'Business', key: 'business', width: 25 }
             ];
 
-            transactions.forEach(row => {
-                worksheet.addRow({
-                    transaction_date: row.transaction_date || '',
-                    category: row.category || '',
-                    amount: row.amount || 0,
-                    note: row.note || '',
-                    added_by: row.added_by || 'Unknown',
-                });
+
+
+            result.rows.forEach(row => worksheet.addRow(row));
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=transactions.xlsx');
+
+            await workbook.xlsx.write(res);
+            res.end();
+        } else if (format === 'pdf') {
+            const doc = new PDFDocument();
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'attachment; filename=transactions.pdf');
+
+            doc.pipe(res);
+            doc.fontSize(18).text('Transactions Report', { align: 'center' }).moveDown();
+
+            result.rows.forEach(tx => {
+                doc.fontSize(12).text(`Date: ${tx.date}`);
+                doc.text(`Category: ${tx.category}`);
+                doc.text(`Description: ${tx.description}`);
+                doc.text(`Amount: ${tx.amount} RON`);
+                doc.text(`Added By: ${tx.added_by}`);
+                doc.text(`Business: ${tx.business}`);
+                doc.moveDown();
             });
 
-            const filePath = path.join(__dirname, '../exports/transactions.xlsx');
-            await workbook.xlsx.writeFile(filePath);
-            res.download(filePath, 'transactions.xlsx');
+            doc.end();
+        } else {
+            res.status(400).json({ error: 'Unsupported format.' });
         }
+
     } catch (err) {
-        console.error('Export failed:', err.message);
-        res.status(500).json({ error: 'Export failed' });
+        console.error('Export error:', err);
+        res.status(500).json({ error: 'Internal server error.' });
     }
 });
 
-// Machine learning insights (Python)
+
+// Machine learning insights
 router.post('/ml-insights', verifyToken, async (req, res) => {
     const transactions = req.body;
 
@@ -191,5 +270,193 @@ router.post('/ml-insights', verifyToken, async (req, res) => {
     }
 });
 
+router.get('/incomes', async (req, res) => {
+    const userId = req.user.user_id;
+    const role = req.user.role;
+    const businessId = req.query.business_id;
+
+    try {
+        let query = 'SELECT * FROM transactions WHERE transaction_type = $1';
+        let values = ['income'];
+
+        if (role === 'user') {
+            query += ' AND user_id = $2';
+            values.push(userId);
+        } else if ((role === 'accountant' || role === 'administrator') && businessId) {
+            query += ' AND business_id = $2';
+            values.push(businessId);
+        }
+
+        query += ' ORDER BY client_name ASC, business_id ASC, transaction_date ASC';
+
+        const result = await pool.query(query, values);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching incomes:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+
+router.post('/incomes', async (req, res) => {
+    const { amount, client_name, transaction_date, note, business_id } = req.body;
+    const userId = req.user.user_id;
+    // DOAR dacă este accountant
+    if (role === 'accountant' && businessId) {
+        // Verifică dacă business-ul chiar e gestionat de acest accountant
+        const accessCheck = await pool.query(
+            `SELECT 1 FROM accountant_businesses WHERE accountant_id = $1 AND business_id = $2`,
+            [userId, businessId]
+        );
+        if (accessCheck.rowCount === 0) {
+            return res.status(403).json({ error: "Access denied to this business" });
+        }
+    }
+
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO transactions 
+             (user_id, amount, client_name, transaction_date, note, business_id, transaction_type)
+             VALUES ($1, $2, $3, $4, $5, $6, 'income') 
+             RETURNING *`,
+            [userId, amount, client_name, transaction_date, note, business_id]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error inserting income:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.get('/businesses', async (req, res) => {
+    const userId = req.user.user_id;
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM businesses WHERE created_by = $1',
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching businesses:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// POST /api/transactions/ml-anomalies
+router.post('/ml-anomalies', verifyToken, async (req, res) => {
+    try {
+        const inputData = JSON.stringify(req.body);
+
+        const python = spawn('python', ['scripts/ml-anomalies.py']);
+
+        let output = '';
+        python.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+
+        let errorOutput = '';
+        python.stderr.on('data', (data) => {
+            errorOutput += data.toString();
+        });
+
+        python.stdin.write(inputData);
+        python.stdin.end();
+
+        python.on('close', (code) => {
+            if (code !== 0 || errorOutput) {
+                console.error('Python error:', errorOutput);
+                return res.status(500).json({ error: 'Anomaly detection failed.' });
+            }
+
+            try {
+                const result = JSON.parse(output);
+                return res.json(result);
+            } catch (err) {
+                console.error('Parsing error:', err);
+                return res.status(500).json({ error: 'Failed to parse Python output.' });
+            }
+        });
+    } catch (err) {
+        console.error('Server error:', err);
+        return res.status(500).json({ error: 'Server error.' });
+    }
+});
+
+router.post('/ml-behavior', verifyToken, async (req, res) => {
+    try {
+        const transactions = req.body.map(tx => ({
+            ...tx,
+            type: tx.type || (parseFloat(tx.amount) >= 0 ? 'income' : 'expense')
+        }));
+
+        const python = spawn('python', ['scripts/ml-behavior.py']);
+
+        let output = '';
+        python.stdout.on('data', data => output += data.toString());
+        python.stderr.on('data', err => console.error('stderr:', err.toString()));
+
+        python.stdin.write(JSON.stringify(transactions));
+        python.stdin.end();
+
+        python.on('close', code => {
+            if (code !== 0) return res.status(500).json({ error: 'Script failed' });
+
+            try {
+                res.json(JSON.parse(output));
+            } catch {
+                res.status(500).json({ error: 'Invalid JSON from Python' });
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
+// POST /api/transactions/ml-predict-category
+router.post('/ml-predict-category', verifyToken, async (req, res) => {
+    try {
+        const inputData = JSON.stringify(req.body);
+        const isWindows = process.platform === 'win32';
+        const python = spawn(isWindows ? 'python' : 'python3', ['scripts/ml-predict-category.py']);
+
+        let output = '';
+        let errorOutput = '';
+
+        python.stdout.on('data', data => output += data.toString());
+        python.stderr.on('data', data => errorOutput += data.toString());
+
+        python.stdin.write(inputData);
+        python.stdin.end();
+
+        python.on('close', code => {
+            if (code !== 0 || errorOutput) {
+                console.error('Python error:', errorOutput);
+                return res.status(500).json({ error: 'Prediction failed.' });
+            }
+
+            try {
+                const result = JSON.parse(output);
+                return res.json(result);
+            } catch (err) {
+                return res.status(500).json({ error: 'Invalid Python output' });
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ error: 'Server error' });
+    }
+});
+
+router.post('/ml-patterns', async (req, res) => {
+    try {
+        const result = await runPatternAnalysis(req.body.user_id);
+        res.json(result);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Pattern analysis failed' });
+    }
+});
 
 module.exports = router;

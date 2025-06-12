@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 require('dotenv').config();
-const jwt = require('jsonwebtoken'); // add this at the top if not already present
+const jwt = require('jsonwebtoken');
 
 
 const pool = new Pool({

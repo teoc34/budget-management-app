@@ -5,150 +5,77 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-
-
-const EXCLUDED_CATEGORIES = ['Rent', 'Transport', 'Utilities'];
+import SmartBudgetSuggestions from '../components/SmartBudgetSuggestions';
 
 const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accountantBusinesses }) => {
-
     const navigate = useNavigate();
 
     const [transactions, setTransactions] = useState([]);
-    const [greedySuggestions, setGreedySuggestions] = useState([]);
-    const [goalPaths, setGoalPaths] = useState([]);
-    const [savingsTarget, setSavingsTarget] = useState(30);
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedBusinessName, setSelectedBusinessName] = useState('');
-    const [showInsightsModal, setShowInsightsModal] = useState(false);
-    const [insights, setInsights] = useState([]);
+    const [selectedCategory, setSelectedCategory] = useState('');
 
 
-    useEffect(() => {
-        if (!user) return;
+    // Fetch transactions based on user role
+    const fetchTransactions = async () => {
+        try {
+            let endpoint = 'http://localhost:5000/api/transactions';
 
-        const fetchTransactions = async () => {
-            try {
-                let endpoint = 'http://localhost:5000/api/transactions';
-
-                if (user.role === 'accountant' && selectedBusinessId) {
-                    endpoint += `?business_id=${selectedBusinessId}`;
-                }
-
-                const res = await fetch(endpoint, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await res.json();
-                if (Array.isArray(data)) {
-                    setTransactions(data);
-                    runGreedyOptimizer(data);
-                } else {
-                    console.error('Unexpected data format:', data);
-                    setTransactions([]);
-                }
-
-            } catch (err) {
-                console.error('Error fetching transactions:', err);
+            if (user.role === 'administrator' && selectedBusinessId) {
+                endpoint += `?business_id=${selectedBusinessId}`;
+            } else if (user.role === 'user') {
+                endpoint += `?user_id=${user.user_id}`;
             }
-        };
+
+            console.log("Fetching from:", endpoint); // Acum va include business_id
+
+            const res = await fetch(endpoint, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await res.json();
+            console.log("Loaded transactions:", data); // verifici răspunsul JSON
+
+            setTransactions(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('Error fetching transactions:', err);
+            setTransactions([]);
+        }
+    };
 
 
-        const fetchBusinessName = async () => {
-            if (selectedBusinessId) {
-                try {
-                    const res = await fetch(`http://localhost:5000/api/businesses/${selectedBusinessId}`);
-                    const data = await res.json();
-                    setSelectedBusinessName(data?.name || '');
-                } catch (err) {
+
+    // Fetch transactions and business name on change
+    useEffect(() => {
+        console.log("Loaded transactions:", transactions);
+        fetchTransactions();
+
+        if (selectedBusinessId) {
+            fetch(`http://localhost:5000/api/businesses/${selectedBusinessId}`)
+                .then(res => res.json())
+                .then(data => setSelectedBusinessName(data?.name || ''))
+                .catch(err => {
                     console.error('Failed to load business name:', err);
                     setSelectedBusinessName('');
-                }
-            } else {
-                setSelectedBusinessName('');
-            }
-        };
-
-        fetchTransactions();
-        fetchBusinessName();
-    }, [user, savingsTarget, selectedBusinessId]);
-
-    // Greedy Optimizer with percentage saving target
-    const runGreedyOptimizer = (data) => {
-        const optionalExpenses = data.filter(tx => !EXCLUDED_CATEGORIES.includes(tx.category));
-        const categorySums = {};
-
-        optionalExpenses.forEach(tx => {
-            categorySums[tx.category] = (categorySums[tx.category] || 0) + parseFloat(tx.amount);
-        });
-
-        const sortedCategories = Object.entries(categorySums).sort((a, b) => b[1] - a[1]);
-        const totalOptional = sortedCategories.reduce((sum, [, value]) => sum + value, 0);
-        const savingTarget = totalOptional * (savingsTarget / 100);
-
-        let remaining = savingTarget;
-        const suggestions = [];
-
-        for (const [category, amount] of sortedCategories) {
-            if (remaining <= 0) break;
-            const cut = Math.min(amount, remaining);
-            suggestions.push({ category, cut: cut.toFixed(2) });
-            remaining -= cut;
+                });
+        } else {
+            setSelectedBusinessName('');
         }
+    }, [user, selectedBusinessId]);
 
-        setGreedySuggestions(suggestions);
-    };
-
-    const financialGoals = [
-        { value: 'department', label: 'Open New Department', cost: 10000 },
-        { value: 'equipment', label: 'Buy New Equipment', cost: 7000 },
-        { value: 'staff', label: 'Hire New Staff', cost: 5000 },
-        { value: 'infrastructure', label: 'Upgrade Infrastructure', cost: 8000 },
-        { value: 'marketing', label: 'Marketing Campaign', cost: 4000 }
-    ];
-
-    const handleGoalSelect = (amount) => {
-        const optional = transactions
-            .filter(tx => !EXCLUDED_CATEGORIES.includes(tx.category))
-            .map(tx => ({ ...tx, amount: parseFloat(tx.amount) }))
-            .sort((a, b) => b.amount - a.amount); // try bigger values first for shorter paths
-
-        const resultPaths = [];
-        const currentPath = [];
-
-        const backtrack = (index, currentSum) => {
-            if (currentSum >= amount) {
-                resultPaths.push([...currentPath]);
-                return;
-            }
-
-            for (let i = index; i < optional.length; i++) {
-                currentPath.push(optional[i]);
-                backtrack(i + 1, currentSum + optional[i].amount);
-                currentPath.pop();
-            }
-        };
-
-        backtrack(0, 0);
-
-        const bestPath = resultPaths.sort((a, b) =>
-            a.reduce((sum, tx) => sum + tx.amount, 0) -
-            b.reduce((sum, tx) => sum + tx.amount, 0)
-        )[0];
-
-        setGoalPaths(bestPath || []);
-    };
+    // Filter transactions by selected month
+    const filteredTransactions = transactions.filter(tx => {
+        const txMonth = new Date(tx.transaction_date).getMonth() + 1;
+        const monthMatch = selectedMonth ? txMonth === Number(selectedMonth) : true;
+        const categoryMatch = selectedCategory ? tx.category === selectedCategory : true;
+        return monthMatch && categoryMatch;
+    });
 
 
-    const filteredTransactions = selectedMonth
-        ? transactions.filter(tx => {
-            const month = new Date(tx.transaction_date).getMonth() + 1;
-            return month === Number(selectedMonth);
-        })
-        : transactions;
-
+    // Prepare pie chart data by category
     const chartData = filteredTransactions.reduce((acc, tx) => {
         const found = acc.find(item => item.name === tx.category);
         if (found) {
@@ -159,6 +86,7 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         return acc;
     }, []);
 
+    // Prepare line chart data for daily spending
     const dailySpendingData = transactions.reduce((acc, tx) => {
         const date = format(new Date(tx.transaction_date), 'dd MMM yyyy');
         const existing = acc.find(item => item.date === date);
@@ -170,8 +98,10 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         return acc.sort((a, b) => new Date(a.date) - new Date(b.date));
     }, []);
 
+    // Define chart colors
     const COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#ec4899"];
 
+    // Prepare stacked bar chart data for monthly spending by category
     const monthlyCategoryData = transactions.reduce((acc, tx) => {
         const month = format(new Date(tx.transaction_date), 'yyyy-MM');
         const category = tx.category;
@@ -187,20 +117,62 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         return acc;
     }, []);
 
-    const generateInsights = () => {
-        const grouped = {};
-        transactions.forEach(tx => {
-            grouped[tx.category] = (grouped[tx.category] || 0) + parseFloat(tx.amount);
+    // Group income and expenses per month
+    const incomeVsExpensesData = [];
+
+    const groupedByMonth = {};
+
+    transactions.forEach(tx => {
+        const month = new Date(tx.transaction_date).toISOString().slice(0, 7); // ex: "2025-01"
+        if (!groupedByMonth[month]) {
+            groupedByMonth[month] = { income: 0, expenses: 0 };
+        }
+        if (tx.transaction_type?.toLowerCase() === 'income') {
+            groupedByMonth[month].income += Number(tx.amount);
+        } else if (tx.transaction_type?.toLowerCase() === 'expense') {
+            groupedByMonth[month].expenses += Number(tx.amount);
+        }
+
+    });
+
+    for (const month in groupedByMonth) {
+        incomeVsExpensesData.push({
+            month,
+            income: groupedByMonth[month].income,
+            expenses: groupedByMonth[month].expenses,
         });
+    }
 
-        const sorted = Object.entries(grouped)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 2); // Top 2 categories
 
-        const result = sorted.map(([category, amount]) => ({ category, amount }));
-        setInsights(result);
-        setShowInsightsModal(true);
-    };
+    const totalIncome = transactions
+        .filter(tx => tx.transaction_type?.toLowerCase() === 'income')
+        .reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+    const totalExpenses = transactions
+        .filter(tx => tx.transaction_type?.toLowerCase() === 'expense')
+        .reduce((sum, tx) => sum + Number(tx.amount), 0);
+    const profit = totalIncome - totalExpenses;
+
+    const topClientsByIncome = [];
+
+    if (user.role === 'administrator' || user.role === 'accountant') {
+        const incomeMap = {};
+
+        transactions
+            .filter(tx => tx.transaction_type?.toLowerCase() === 'income')
+            .forEach(tx => {
+                const client = tx.added_by_name || tx.user_name || tx.client_name || 'Unknown'; // adaptează la ce ai
+                incomeMap[client] = (incomeMap[client] || 0) + Number(tx.amount);
+            });
+
+        // Sort and get top 5
+        topClientsByIncome.push(
+            ...Object.entries(incomeMap)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([name, amount]) => ({ name, amount }))
+        );
+    }
 
 
 
@@ -208,6 +180,7 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         <div>
             <h2 className="text-2xl font-bold mb-2">👋 Hello, {user?.name}!</h2>
 
+            {/* Dropdown for accountants to choose a business */}
             {user.role === 'accountant' && accountantBusinesses.length > 0 && (
                 <div className="mb-4">
                     <label className="block mb-1 font-medium">Select Business</label>
@@ -215,7 +188,7 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                         value={selectedBusinessId}
                         onChange={(e) => {
                             setSelectedBusinessId(e.target.value);
-                            fetchTransactions(); // reload transactions after business selection
+                            fetchTransactions();
                         }}
                         className="w-full p-2 border rounded"
                     >
@@ -229,44 +202,70 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                 </div>
             )}
 
-
+            {/* Business name heading */}
             {selectedBusinessId && selectedBusinessName && (
                 <h3 className="text-lg font-semibold text-gray-700 mb-6">
                     Dashboard for <span className="text-indigo-600">{selectedBusinessName}</span>
                 </h3>
             )}
+            <div className="bg-white p-4 rounded shadow mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Month Filter */}
+                <div>
+                    <label className="block mb-1 text-sm font-medium">Filter by Month</label>
+                    <select
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="w-full p-2 border rounded"
+                    >
+                        <option value="">All Months</option>
+                        {Array.from({ length: 12 }, (_, i) => (
+                            <option key={i + 1} value={i + 1}>
+                                {format(new Date(2000, i, 1), 'MMMM')}
+                            </option>
+                        ))}
+                    </select>
+                </div>
 
-
-
-            {/* Pie Chart */}
-            <div className="bg-white p-6 rounded-xl shadow-md mb-10">
-                <h3 className="text-xl font-semibold mb-4">Spending Breakdown</h3>
-                <div className="flex items-center justify-between mb-4">
+                {/* Business Filter (visible only to accountant/administrator) */}
+                {(user.role === 'accountant' || user.role === 'administrator') && (
                     <div>
-                        <label className="mr-2 font-medium text-gray-700">Filter by month:</label>
+                        <label className="block mb-1 text-sm font-medium">Filter by Business</label>
                         <select
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="p-2 border rounded"
+                            value={selectedBusinessId}
+                            onChange={(e) => setSelectedBusinessId(e.target.value)}
+                            className="w-full p-2 border rounded"
                         >
                             <option value="">All</option>
-                            {Array.from({ length: 12 }, (_, i) => (
-                                <option key={i + 1} value={i + 1}>
-                                    {format(new Date(2000, i, 1), 'MMMM')}
+                            {accountantBusinesses.map((biz) => (
+                                <option key={biz.business_id} value={biz.business_id}>
+                                    {biz.name}
                                 </option>
                             ))}
                         </select>
                     </div>
+                )}
 
-                    {selectedMonth && (
-                        <button
-                            onClick={() => setSelectedMonth('')}
-                            className="ml-4 px-3 py-1 bg-gray-200 hover:bg-gray-300 text-sm rounded"
-                        >
-                            Reset Filter
-                        </button>
-                    )}
+                {/* Category Filter */}
+                <div>
+                    <label className="block mb-1 text-sm font-medium">Filter by Category</label>
+                    <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="w-full p-2 border rounded"
+                    >
+                        <option value="">All</option>
+                        {[...new Set(transactions.map(tx => tx.category))].map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
                 </div>
+            </div>
+
+
+            {/* Pie Chart: Spending Breakdown */}
+            <div className="bg-white p-6 rounded-xl shadow-md mb-10">
+                <h3 className="text-xl font-semibold mb-4">Spending Breakdown</h3>
+
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100}>
@@ -274,33 +273,111 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip formatter={(value) =>
+                            `${new Intl.NumberFormat('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            }).format(value)} RON`
+                        } />
                         <Legend />
                     </PieChart>
                 </ResponsiveContainer>
             </div>
 
-            {/* Line Chart */}
+            {/* Income vs. Spend */}
+            <div className="bg-white p-6 rounded-xl shadow-md mb-10">
+                <h3 className="text-xl font-semibold mb-4">Income vs. Expense</h3>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-green-100 p-4 rounded shadow">
+                        <p className="text-sm text-green-700">Total Income</p>
+                        <p className="text-xl font-bold text-green-900">{totalIncome.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON</p>
+                    </div>
+                    <div className="bg-red-100 p-4 rounded shadow">
+                        <p className="text-sm text-red-700">Total Expenses</p>
+                        <p className="text-xl font-bold text-red-900">{totalExpenses.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON</p>
+                    </div>
+                    <div className={`p-4 rounded shadow ${profit >= 0 ? 'bg-emerald-100' : 'bg-orange-100'}`}>
+                        <p className="text-sm">{profit >= 0 ? 'Net Profit' : 'Net Loss'}</p>
+                        <p className="text-xl font-bold">{profit.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON RON</p>
+                    </div>
+                </div>
+
+
+
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={incomeVsExpensesData}>
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip
+                            formatter={(value) => value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        />
+
+                        <Legend />
+                        <Bar dataKey="income" fill="#4ade80" name="Income" />
+                        <Bar dataKey="expenses" fill="#f87171" name="Expenses" />
+                    </BarChart>
+                </ResponsiveContainer>
+
+            </div>
+
+            {topClientsByIncome.length > 0 && (
+                <div className="bg-white p-6 rounded-xl shadow-md mb-10">
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                        Top 5 Clients by Income
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {topClientsByIncome.map((client, index) => (
+                            <div
+                                key={index}
+                                className="bg-gray-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm hover:shadow-md transition duration-300"
+                            >
+                                <div className="text-sm text-gray-500 mb-1">#{index + 1}</div>
+                                <div className="font-semibold text-base mb-1">{client.name}</div>
+                                <div className="text-green-700 font-bold text-lg">
+                                    {client.amount.toLocaleString('ro-RO', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })} RON
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+
+            {/* Line Chart: Daily Spending */}
             <div className="bg-white p-6 rounded-xl shadow-md mb-10">
                 <h3 className="text-xl font-semibold mb-4">Spending Over Time</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={dailySpendingData}>
                         <XAxis dataKey="date" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip formatter={(value) =>
+                            `${new Intl.NumberFormat('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            }).format(value)} RON`
+                        } />
                         <Legend />
                         <Line type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={2} />
                     </LineChart>
                 </ResponsiveContainer>
             </div>
 
+            {/* Bar Chart: Monthly Category Spending */}
             <div className="bg-white p-6 rounded-xl shadow-md mb-10">
                 <h3 className="text-xl font-semibold mb-4">📊 Monthly Spending by Category</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={monthlyCategoryData}>
                         <XAxis dataKey="month" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip formatter={(value) =>
+                            `${new Intl.NumberFormat('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            }).format(value)} RON`
+                        } />
                         <Legend />
                         <Bar dataKey="Groceries" stackId="a" fill="#4f46e5" />
                         <Bar dataKey="Transport" stackId="a" fill="#10b981" />
@@ -312,6 +389,7 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                 </ResponsiveContainer>
             </div>
 
+            {/* Button to view deeper AI insights */}
             <div className="mb-6">
                 <button
                     onClick={() => navigate('/dashboard/insights')}
@@ -322,71 +400,11 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
                 </button>
             </div>
 
-
-
-
-            {/* Greedy Optimizer */}
-            <div className="bg-white p-6 rounded-xl shadow-md mb-10">
-                <h3 className="text-xl font-semibold mb-4">💡 Smart Budget Suggestions <span
-                    className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded cursor-help"
-                    title="Implemented with Greedy logic"
-                >
-                    ?
-                </span></h3>
-                <label className="block mb-2 text-gray-700">How much would you like to save from optional expenses?</label>
-                <select
-                    value={savingsTarget}
-                    onChange={(e) => setSavingsTarget(Number(e.target.value))}
-                    className="mb-4 border p-2 rounded"
-                >
-                    {[10, 20, 30, 40].map(val => (
-                        <option key={val} value={val}>{val}%</option>
-                    ))}
-                </select>
-                {greedySuggestions.length > 0 ? (
-                    <ul className="list-disc pl-6 text-gray-800">
-                        {greedySuggestions.map((item, idx) => (
-                            <li key={idx}>
-                                ✂️ Cut <strong>{item.cut} RON</strong> from <strong>{item.category}</strong>
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-gray-500">Not enough data for smart suggestions.</p>
-                )}
-            </div>
-
-
-            <div className="bg-white p-6 rounded-xl shadow-md">
-                <h3 className="text-xl font-semibold mb-4">🎯 Financial Goal Planner <span
-                    className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded cursor-help"
-                    title="Implemented with Backtracking logic"
-                >
-                    ?
-                </span></h3>
-                <p className="mb-2 text-gray-700">Select a goal and let us build your custom savings roadmap.</p>
-                <select
-                    onChange={(e) => handleGoalSelect(Number(e.target.value))}
-                    className="mb-4 border p-2 rounded"
-                >
-                    <option value="">Choose a goal</option>
-                    {financialGoals.map((g, idx) => (
-                        <option key={idx} value={g.cost}>{g.label} – {g.cost} RON</option>
-                    ))}
-                </select>
-                {goalPaths.length > 0 ? (
-                    <ul className="list-disc pl-6 text-gray-800">
-                        {goalPaths.map((tx, idx) => (
-                            <li key={idx}>
-                                💰 Save <strong>{tx.amount} RON</strong> from <strong>{tx.category}</strong> on {format(new Date(tx.transaction_date), 'dd MMM yyyy')}
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-gray-500">No savings route found yet.</p>
-                )}
-            </div>
-        </div >
+            {/* Smart Suggestions for Admins only */}
+            {user.role === 'administrator' && (
+                <SmartBudgetSuggestions transactions={transactions} />
+            )}
+        </div>
     );
 };
 
