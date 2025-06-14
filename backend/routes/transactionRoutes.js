@@ -34,7 +34,7 @@ router.get('/', verifyToken, async (req, res) => {
 
         if (role === 'accountant') {
             if (!businessId) {
-                return res.status(400).json({ error: 'Business ID required for accountants' });
+                return res.status(200).json({ error: 'Business ID required for accountants' });
             }
 
             result = await pool.query(`
@@ -388,7 +388,7 @@ router.post('/ml-behavior', verifyToken, async (req, res) => {
     try {
         const transactions = req.body.map(tx => ({
             ...tx,
-            type: tx.type || (parseFloat(tx.amount) >= 0 ? 'income' : 'expense')
+            type: tx.transaction_type || (parseFloat(tx.amount) >= 0 ? 'income' : 'expense')
         }));
 
         const python = spawn('python', ['scripts/ml-behavior.py']);

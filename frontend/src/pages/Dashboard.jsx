@@ -10,6 +10,7 @@ import AccountantBusinesses from './AccountantBusinesses';
 import Insights from './Insights';
 import AdminEmployees from './AdminEmployees';
 import IncomePage from './IncomePage';
+import AdminDashboard from './AdminDashboard';
 
 const Dashboard = () => {
     const [user, setUser] = useState(null);
@@ -63,7 +64,16 @@ const Dashboard = () => {
             <nav className="bg-indigo-600 text-white p-4 flex justify-between items-center">
                 <div className="text-2xl font-bold">MyBudgetApp</div>
                 <div className="flex space-x-6">
-                    <Link to="/dashboard/accounthome" className="hover:underline">Dashboard</Link>
+                    <Link
+                        to={
+                            user.role === 'admin'
+                                ? '/dashboard/admin'
+                                : '/dashboard/accounthome'
+                        }
+                        className="hover:underline"
+                    >
+                        Dashboard
+                    </Link>
                     <Link to="/dashboard/account" className="hover:underline">Account Info</Link>
                     <Link to="/dashboard/transactions" className="hover:underline">Transactions</Link>
 
@@ -80,12 +90,16 @@ const Dashboard = () => {
                             <Link to="/dashboard/admin/employees" className="hover:underline">Employees</Link>
                         </>
                     )}
+                    {user.role === 'admin' && (
+                        <>
+                            <Link to="/dashboard/admin" className="hover:underline">Admin Dashboard</Link>
+                        </>
+                    )}
 
                     <button onClick={handleLogout} className="hover:underline">Logout</button>
                 </div>
                 <div>Welcome, {user.name}!</div>
             </nav>
-
 
             <div className="p-6 flex-grow">
                 <Routes>
@@ -106,8 +120,10 @@ const Dashboard = () => {
                                     setSelectedBusinessId={setSelectedBusinessId}
                                     accountantBusinesses={accountantBusinesses}
                                 />
-                            ) : (
+                            ) : user.role === 'user' ? (
                                 <EmployeeHome user={user} transactions={transactions} />
+                            ) : (
+                                <AdminDashboard user={user} transactions={transactions} />
                             )
                         }
                     />
@@ -153,11 +169,25 @@ const Dashboard = () => {
                         </>
                     )}
 
-                    <Route path="*" element={<Navigate to="accounthome" replace />} />
+                    {user.role === 'admin' && (
+                        <>
+                            <Route path="admin" element={<AdminDashboard user={user} />} />
+                        </>
+                    )}
+
+                    <Route
+                        path="*"
+                        element={
+                            user.role === 'admin'
+                                ? <Navigate to="/dashboard/admin" replace />
+                                : <Navigate to="accounthome" replace />
+                        }
+                    />
                 </Routes>
             </div>
         </div>
     );
+
 };
 
 export default Dashboard;

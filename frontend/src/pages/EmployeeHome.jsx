@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import ChatbotWidget from "../components/ChatBotWidget";
 
 // Default budget categories grouped by type
 const DEFAULT_CATEGORIES = {
@@ -205,9 +206,24 @@ const EmployeeHome = ({ user, transactions = [] }) => {
     const needsBudget = available * 0.5;
     const wantsBudget = available * 0.3;
 
-    // Sum total expenses per category group
-    const totalByGroup = (group) =>
-        categories[group].reduce((sum, cat) => sum + (spending[cat.key] || 0), 0);
+    const getActualSpendingByGroup = (group) => {
+        return categories[group].reduce((sum, cat) => {
+            const categoryKey = cat.key.toLowerCase();
+            const actual = transactions
+                .filter(tx => {
+                    const txMonth = new Date(tx.transaction_date).toISOString().slice(0, 7);
+                    return (
+                        tx.category?.toLowerCase() === categoryKey &&
+                        !tx.is_business_expense &&
+                        (!selectedMonth || txMonth === selectedMonth)
+                    );
+                })
+                .reduce((s, tx) => s + Number(tx.amount), 0);
+
+            return sum + actual;
+        }, 0);
+    };
+
 
     // Generate personalized financial tips based on current values
     const checkTips = () => {
@@ -227,29 +243,12 @@ const EmployeeHome = ({ user, transactions = [] }) => {
         setTips(newTips);
     };
 
-    // Data for bar chart showing breakdown
     const breakdownChart = [
-        { name: 'Needs', value: totalByGroup('needs') },
-        { name: 'Wants', value: totalByGroup('wants') },
+        { name: 'Needs', value: getActualSpendingByGroup('needs') },
+        { name: 'Wants', value: getActualSpendingByGroup('wants') },
         { name: 'Savings', value: savingsAmount },
-        { name: 'Left Over', value: salary - totalByGroup('needs') - totalByGroup('wants') - savingsAmount }
+        { name: 'Left Over', value: salary - getActualSpendingByGroup('needs') - getActualSpendingByGroup('wants') - savingsAmount }
     ];
-
-    // Generate equal distribution suggestions for each category group
-    const getSuggestion = (groupBudget, groupList) => {
-        const equalSplit = groupBudget / groupList.length;
-        return groupList.reduce((acc, cat) => {
-            acc[cat.key] = equalSplit.toFixed(0);
-            return acc;
-        }, {});
-    };
-
-    // Combine suggestions across all groups
-    const suggestions = {
-        ...getSuggestion(needsBudget, categories.needs),
-        ...getSuggestion(wantsBudget, categories.wants),
-        ...getSuggestion(savingsAmount, categories.savings)
-    };
 
     const handleTargetChange = async (key, value) => {
         const updatedTargets = { ...targets, [key]: value };
@@ -263,10 +262,11 @@ const EmployeeHome = ({ user, transactions = [] }) => {
                     Authorization: `Bearer ${localStorage.getItem('token')}`,
                 },
                 body: JSON.stringify({
-                    category: key,
+                    category: key.toLowerCase(),
                     target_amount: parseFloat(value),
                     month: selectedMonth,
                 }),
+
             });
 
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -410,9 +410,14 @@ const EmployeeHome = ({ user, transactions = [] }) => {
                     <BarChart data={breakdownChart}>
                         <XAxis dataKey="name" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip formatter={(value) =>
+                            `${new Intl.NumberFormat('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            }).format(value)} RON`
+                        } />
                         <Bar dataKey="value" fill="#6366f1">
-                            <LabelList dataKey="value" position="top" fill="#111827" fontSize={14} />
+                            <LabelList dataKey="value" position="top" fill="#111827" fontSize={14} formatter={(val) => val.toFixed(2)} />
                         </Bar>
                     </BarChart>
                 </ResponsiveContainer>
@@ -450,7 +455,8 @@ const EmployeeHome = ({ user, transactions = [] }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                             {categories[group].map((cat, idx) => {
                                 const actual = getActualSpend(cat.key);
-                                const target = targets[cat.key] || 0;
+                                const target = targets[cat.key.toLowerCase()] || 0;
+
                                 const diff = actual - target;
                                 const status = diff > 0 ? `⚠️ Over by ${diff.toFixed(2)} RON`
                                     : diff === 0 ? `✅ On target`
@@ -478,7 +484,9 @@ const EmployeeHome = ({ user, transactions = [] }) => {
                                 );
                             })}
                         </div>
+                        <ChatbotWidget />
                     </div>
+
                 ))
             }
         </div >

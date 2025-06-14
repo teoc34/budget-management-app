@@ -17,18 +17,21 @@ const SmartBudgetSuggestions = ({ transactions }) => {
     useEffect(() => {
         if (!transactions || transactions.length === 0) return;
 
-        const total = transactions.reduce((acc, tx) => acc + parseFloat(tx.amount), 0);
-        const target = (savingsPercent / 100) * total;
+        const onlyExpenses = transactions.filter(tx => tx.transaction_type !== 'income');
+        if (onlyExpenses.length === 0) return;
 
+        const total = onlyExpenses.reduce((acc, tx) => acc + parseFloat(tx.amount), 0);
+        const target = (savingsPercent / 100) * total;
 
         // Backtracking Suggestions
         const categories = {};
-        transactions.forEach(tx => {
+        onlyExpenses.forEach(tx => {
             const category = tx.category;
             const amount = parseFloat(tx.amount);
             if (!categories[category]) categories[category] = 0;
             categories[category] += amount;
         });
+
 
         const optimizable = [
             'Entertainment', 'Office Supplies', 'Transport', 'Other',
@@ -69,6 +72,8 @@ const SmartBudgetSuggestions = ({ transactions }) => {
         backtrack(0, 0, target, []);
         setSolutions(results);
     }, [transactions, savingsPercent]);
+
+
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-md space-y-8">

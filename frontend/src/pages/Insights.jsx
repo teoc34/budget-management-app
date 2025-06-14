@@ -51,7 +51,7 @@ const Insights = ({ user, selectedBusinessId }) => {
                 const cat = tx.category;
                 totalByCategory[cat] = (totalByCategory[cat] || 0) + amt;
 
-                if (tx.type === 'expense') {
+                if (tx.transaction_type === 'expense') {
                     const month = format(new Date(tx.transaction_date), 'yyyy-MM');
                     monthlyExpenses[month] = (monthlyExpenses[month] || 0) + amt;
                 }
@@ -183,11 +183,14 @@ const Insights = ({ user, selectedBusinessId }) => {
                 <h3 className="text-xl font-semibold mb-3">🧠 Overspending Predictions</h3>
                 {insights.length > 0 ? (
                     <ul className="space-y-2 text-gray-700">
-                        {insights.map((item, idx) => (
-                            <li key={idx} className="flex items-center gap-2">
-                                ⚠️ <span>You might be overspending on <strong>{item.category}</strong>: <span className="text-red-600 font-bold">{item.amount.toFixed(2)} RON</span></span>
-                            </li>
-                        ))}
+                        {insights
+                            .filter(item => item.category.toLowerCase() !== 'income')
+                            .map((item, idx) => (
+                                <li key={idx} className="flex items-center gap-2">
+                                    ⚠️ <span>You might be overspending on <strong>{item.category}</strong>: <span className="text-red-600 font-bold">{item.amount.toFixed(2)} RON</span></span>
+                                </li>
+                            ))}
+
                     </ul>
                 ) : (
                     <p className="text-gray-500">✅ No significant overspending detected.</p>

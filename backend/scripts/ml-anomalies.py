@@ -10,7 +10,7 @@ def main():
     df = df.dropna(subset=['amount'])
 
     # Exclude income
-    df = df[df['type'] != 'income']
+    df = df[df['transaction_type'] != 'income']
 
     Q1 = df['amount'].quantile(0.25)
     Q3 = df['amount'].quantile(0.75)

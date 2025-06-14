@@ -6,6 +6,8 @@ import {
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import SmartBudgetSuggestions from '../components/SmartBudgetSuggestions';
+import ChatbotWidget from "../components/ChatBotWidget";
+
 
 const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accountantBusinesses }) => {
     const navigate = useNavigate();
@@ -71,8 +73,10 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
         const txMonth = new Date(tx.transaction_date).getMonth() + 1;
         const monthMatch = selectedMonth ? txMonth === Number(selectedMonth) : true;
         const categoryMatch = selectedCategory ? tx.category === selectedCategory : true;
-        return monthMatch && categoryMatch;
+        const isExpense = tx.transaction_type !== 'income'; // exclude veniturile
+        return monthMatch && categoryMatch && isExpense;
     });
+
 
 
     // Prepare pie chart data by category
@@ -179,7 +183,6 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
     return (
         <div>
             <h2 className="text-2xl font-bold mb-2">👋 Hello, {user?.name}!</h2>
-
             {/* Dropdown for accountants to choose a business */}
             {user.role === 'accountant' && accountantBusinesses.length > 0 && (
                 <div className="mb-4">
@@ -404,6 +407,8 @@ const AccountHome = ({ user, selectedBusinessId, setSelectedBusinessId, accounta
             {user.role === 'administrator' && (
                 <SmartBudgetSuggestions transactions={transactions} />
             )}
+
+            <ChatbotWidget />
         </div>
     );
 };

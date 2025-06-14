@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
+import ChatbotWidget from "../components/ChatBotWidget";
 
 const AccountantDashboard = ({ user }) => {
     const [selectedBusinessId, setSelectedBusinessId] = useState('');
@@ -79,7 +80,6 @@ const AccountantDashboard = ({ user }) => {
     return (
         <div className="p-6 space-y-10">
             <h2 className="text-2xl font-bold">📊 Accountant Dashboard</h2>
-
             {/* Select Business */}
             <div className="mb-4">
                 <label className="block text-sm font-medium">Select Business</label>
@@ -301,6 +301,7 @@ const AccountantDashboard = ({ user }) => {
                     </div>
                 </div>
             </div>
+            <ChatbotWidget />
         </div>
     );
 };
