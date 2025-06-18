@@ -147,18 +147,18 @@ router.get('/export', verifyToken, async (req, res) => {
 
     try {
         let query = `
-  SELECT 
-    t.transaction_date AS date, 
-    t.note AS description, 
-    t.category, 
-    t.amount,
-    t.added_by,
-    b.name AS business
-  FROM transactions t
-  JOIN users u ON t.user_id = u.user_id
-  LEFT JOIN businesses b ON t.business_id = b.business_id
-  WHERE 1=1
-`;
+        SELECT 
+        t.transaction_date AS date, 
+        t.note AS description, 
+        t.category, 
+        t.amount,
+        t.added_by,
+        b.name AS business
+        FROM transactions t
+        JOIN users u ON t.user_id = u.user_id
+        LEFT JOIN businesses b ON t.business_id = b.business_id
+        WHERE 1=1
+        `;
 
 
         const params = [];
@@ -390,6 +390,7 @@ router.post('/ml-behavior', verifyToken, async (req, res) => {
             ...tx,
             type: tx.transaction_type || (parseFloat(tx.amount) >= 0 ? 'income' : 'expense')
         }));
+
 
         const python = spawn('python', ['scripts/ml-behavior.py']);
 
